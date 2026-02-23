@@ -96,7 +96,7 @@ const Home: React.FC = () => {
           {
             title: "Ceramic Coating",
             price: "$800.00",
-            img: "https://images.unsplash.com/photo-1632823469850-249d942dc38b?auto=format&fit=crop&q=80&w=800"
+            img: "https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&q=80&w=800"
           },
           {
             title: "Paint Correction",
