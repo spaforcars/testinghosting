@@ -1,10 +1,20 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Menu, X, ArrowUpRight } from 'lucide-react';
 
 const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [canadaTime, setCanadaTime] = useState('');
   const location = useLocation();
+
+  useEffect(() => {
+    const updateTime = () => {
+      setCanadaTime(new Date().toLocaleTimeString('en-CA', { timeZone: 'America/Toronto', hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+    };
+    updateTime();
+    const interval = setInterval(updateTime, 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   const navLinks = [
     { name: 'Services', path: '/services' },
@@ -66,7 +76,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           {/* Meta / Search / Mobile Toggle */}
           <div className="flex items-stretch">
             <div className="hidden lg:flex items-center px-6 border-l border-brand-black text-xs font-mono">
-              PARIS, FR <br/> 08:53:24
+              TORONTO, CA <br/> {canadaTime}
             </div>
             <button 
               className="md:hidden px-6 border-l border-brand-black hover:bg-brand-black hover:text-white transition-colors"
