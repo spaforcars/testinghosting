@@ -100,7 +100,7 @@ const Contact: React.FC = () => {
              ></iframe>
              
              <div className="absolute bottom-8 left-8 bg-white border border-brand-black p-4 shadow-lg max-w-xs hidden md:block">
-               <h4 className="font-display font-bold text-lg uppercase mb-1">Spa for Car</h4>
+               <h4 className="font-display font-bold text-lg uppercase mb-1">Spa for Cars</h4>
                <p className="font-mono text-[10px] text-gray-500 uppercase">Entrance on Gloss Ave.</p>
              </div>
            </div>

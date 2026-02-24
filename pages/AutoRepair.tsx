@@ -33,7 +33,7 @@ const AutoRepair: React.FC = () => {
         </h1>
         
         <p className="font-mono text-sm md:text-base uppercase tracking-widest mb-12 text-gray-400">
-          Spa for Car Auto Repair Division.<br/>
+          Spa for Cars Auto Repair Division.<br/>
           Precision mechanics meeting luxury care.
         </p>
 

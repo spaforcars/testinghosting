@@ -8,7 +8,7 @@ const About: React.FC = () => {
          <div className="container mx-auto px-4 text-center max-w-4xl">
            <h1 className="text-[10vw] leading-none font-display font-bold uppercase mb-8">More Than<br/>Just a Wash.</h1>
            <p className="font-mono text-sm md:text-base max-w-2xl mx-auto leading-relaxed">
-             We founded <strong>Spa for Car</strong> with a simple mission: to treat every vehicle like a masterpiece. 
+             We founded <strong>Spa for Cars</strong> with a simple mission: to treat every vehicle like a masterpiece. 
              What started as a passion project in a small garage has evolved into the city's premier automotive sanctuary.
            </p>
          </div>
@@ -35,7 +35,7 @@ const About: React.FC = () => {
               <p className="font-sans text-lg leading-relaxed">
                 Formerly "Quick Shine Auto", we realized our level of care went far beyond a quick shine. 
                 We were performing surgery on paint, therapy on leather, and restoration on wheels. 
-                The name <strong>Spa for Car</strong> reflects the commitment to therapeutic rejuvenation for your vehicle.
+                The name <strong>Spa for Cars</strong> reflects the commitment to therapeutic rejuvenation for your vehicle.
               </p>
             </div>
             

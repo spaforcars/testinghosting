@@ -73,7 +73,7 @@ app.post('/api/send-gift-card', async (req, res) => {
       subject: `You've received a $${amount} Gift Card from ${senderName || 'a friend'}!`,
       html: `
         <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #000; padding: 20px;">
-          <h1 style="text-transform: uppercase; text-align: center; border-bottom: 1px solid #000; padding-bottom: 20px;">Spa for Car</h1>
+          <h1 style="text-transform: uppercase; text-align: center; border-bottom: 1px solid #000; padding-bottom: 20px;">Spa for Cars</h1>
           <div style="padding: 40px 0; text-align: center;">
             <p style="font-size: 18px;">Hello!</p>
             <p>${senderName || 'Someone'} has sent you a gift card for <strong>$${amount}</strong>.</p>
@@ -81,7 +81,7 @@ app.post('/api/send-gift-card', async (req, res) => {
               ${code}
             </div>
             <p style="font-style: italic;">"${message || 'Enjoy the shine!'}"</p>
-            <p style="font-size: 12px; color: #666; margin-top: 40px;">Redeemable for any service at Spa for Car.</p>
+            <p style="font-size: 12px; color: #666; margin-top: 40px;">Redeemable for any service at Spa for Cars.</p>
           </div>
         </div>
       `,

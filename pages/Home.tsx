@@ -42,7 +42,7 @@ const Home: React.FC = () => {
       {/* Intro Text Block */}
       <section className="py-24 px-4 border-b border-brand-black text-center bg-brand-white">
         <div className="max-w-4xl mx-auto space-y-6">
-          <p className="font-mono text-xs uppercase tracking-widest text-gray-500">Welcome to Spa for Car.</p>
+          <p className="font-mono text-xs uppercase tracking-widest text-gray-500">Welcome to Spa for Cars.</p>
           <h2 className="font-display font-bold text-4xl md:text-6xl uppercase leading-none">
             Explore the <span className="text-outline">Catalog</span>.
           </h2>

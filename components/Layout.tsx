@@ -54,7 +54,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           {/* Logo Section */}
           <Link to="/" className="flex items-center px-6 border-r border-brand-black bg-brand-white hover:bg-brand-black hover:text-white transition-colors group">
             <span className="font-display font-bold text-2xl md:text-3xl tracking-tighter uppercase">
-              SPA <span className="text-brand-mclaren group-hover:text-white">FOR</span> CAR
+              SPA <span className="text-brand-mclaren group-hover:text-white">FOR</span> CARS
             </span>
           </Link>
 
@@ -114,7 +114,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6">
            <div className="col-span-2 md:col-span-4 lg:col-span-2 p-8 border-b lg:border-b-0 lg:border-r border-brand-black flex flex-col justify-center">
               <h3 className="font-display font-bold text-3xl uppercase mb-2">Social<br/>Feeds</h3>
-              <p className="font-mono text-xs text-gray-500 mb-4">Follow the process. @spaforcar</p>
+              <p className="font-mono text-xs text-gray-500 mb-4">Follow the process. @spaforcars</p>
               <div className="flex gap-4">
                  <a href="#" className="font-mono text-xs uppercase underline hover:text-brand-accent">Instagram</a>
                  <a href="#" className="font-mono text-xs uppercase underline hover:text-brand-accent">TikTok</a>
@@ -144,7 +144,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           <div className="p-8 border-b md:border-b-0 md:border-r border-brand-black">
             <h4 className="font-display font-bold text-xl uppercase mb-4">About Us</h4>
             <p className="font-mono text-xs leading-relaxed max-w-xs">
-              Spa for Car is a premiere automotive detailing studio focused on restoration and preservation. We treat vehicles as art.
+              Spa for Cars is a premiere automotive detailing studio focused on restoration and preservation. We treat vehicles as art.
             </p>
           </div>
           <div className="p-8 border-b md:border-b-0 md:border-r border-brand-black">
@@ -152,7 +152,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             <ul className="space-y-2 font-mono text-xs">
                <li>123 Gloss Avenue</li>
                <li>Luxury District, CA 90210</li>
-               <li className="pt-2 hover:underline"><a href="mailto:concierge@spaforcar.com">concierge@spaforcar.com</a></li>
+               <li className="pt-2 hover:underline"><a href="mailto:concierge@spaforcars.com">concierge@spaforcars.com</a></li>
                <li className="hover:underline"><a href="tel:5551234567">+1 (555) 123-4567</a></li>
             </ul>
           </div>
@@ -176,8 +176,8 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         {/* Bottom Footer Bar */}
         <div className="flex flex-col md:flex-row justify-between items-center p-2 text-[10px] font-mono uppercase tracking-widest bg-brand-white">
           <span>By Branditecture</span>
-          <span className="font-bold text-lg my-2 md:my-0">SPA <span className="text-brand-mclaren">FOR</span> CAR</span>
-          <span>© 2025 Spa for Car Inc.</span>
+          <span className="font-bold text-lg my-2 md:my-0">SPA <span className="text-brand-mclaren">FOR</span> CARS</span>
+          <span>© 2025 Spa for Cars Inc.</span>
         </div>
       </footer>
     </div>
