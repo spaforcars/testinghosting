@@ -142,7 +142,7 @@ const GiftCards: React.FC = () => {
                
                <div className="relative z-10 flex justify-between items-start">
                   <span className="font-display font-bold text-3xl uppercase tracking-tighter">
-                    SPA FOR<span className="text-brand-accent ml-2">CAR</span>
+                    <span className="text-brand-mclaren">SPA</span> FOR <span className="text-brand-mclaren">CAR</span>
                   </span>
                   <span className="font-mono font-bold text-2xl">${selectedAmount}</span>
                </div>

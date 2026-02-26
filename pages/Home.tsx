@@ -1,173 +1,192 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import Button from '../components/Button';
-import { ArrowRight, Star } from 'lucide-react';
+import { ArrowRight, Star, Shield, Droplets, Car, Sparkles } from 'lucide-react';
 
 const Home: React.FC = () => {
   return (
     <div className="flex flex-col">
-      {/* Hero Section - GARM Style */}
-      <section className="relative w-full h-[85vh] md:h-screen border-b border-brand-black overflow-hidden flex flex-col">
-        {/* Main Hero Visual */}
-        <div className="relative flex-grow w-full overflow-hidden">
-           <img 
-            src="https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&q=80" 
-            alt="Hero Car" 
-            className="w-full h-full object-cover object-center"
-           />
-           
-           {/* Massive Overlay Text */}
-           <div className="absolute inset-0 flex flex-col justify-center items-center pointer-events-none mix-blend-difference">
-              <h1 className="text-[12vw] leading-[0.8] font-display font-bold text-white tracking-tighter text-center">
-                SPA FOR<br/>CAR
+      {/* Hero Section */}
+      <section className="relative w-full h-[90vh] overflow-hidden">
+        <img
+          src="https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&q=80"
+          alt="Hero Car"
+          className="w-full h-full object-cover object-center"
+        />
+        <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/50 to-transparent"></div>
+
+        <div className="absolute inset-0 flex items-center">
+          <div className="max-w-7xl mx-auto px-4 w-full">
+            <div className="max-w-2xl">
+              <h1 className="font-display font-extrabold italic text-5xl md:text-6xl lg:text-7xl text-white uppercase leading-[1.05] mb-6">
+                Ontario's Top{' '}
+                <span className="text-brand-mclaren">Ceramic Coating</span>
               </h1>
-           </div>
-           
-           <div className="absolute bottom-12 right-12 md:right-24 z-10 hidden md:block">
-              <Link to="/booking">
-                <Button variant="white" icon>SHOP NOW</Button>
+              <p className="text-base md:text-lg text-gray-200 leading-relaxed mb-8 font-light">
+                Preserve Your Paint | Enhance Your Car's Value | Drive with Confidence
+              </p>
+              <Link
+                to="/booking"
+                className="inline-flex items-center gap-3 bg-brand-mclaren hover:bg-orange-600 text-white font-display font-semibold text-sm md:text-base uppercase px-8 py-4 tracking-wider transition-colors rounded"
+              >
+                Get Started <ArrowRight className="w-4 h-4" />
               </Link>
-           </div>
-        </div>
-
-        {/* Hero Bottom Bar Info */}
-        <div className="border-t border-brand-black bg-brand-white p-4 flex justify-between items-center text-xs font-mono uppercase tracking-widest">
-           <span>Winter Collection 3 Out Now.</span>
-           <Link to="/services" className="flex items-center gap-2 hover:underline group">
-             Browse Catalog <ArrowRight className="w-3 h-3 group-hover:translate-x-1 transition-transform"/>
-           </Link>
-        </div>
-      </section>
-
-      {/* Intro Text Block */}
-      <section className="py-24 px-4 border-b border-brand-black text-center bg-brand-white">
-        <div className="max-w-4xl mx-auto space-y-6">
-          <p className="font-mono text-xs uppercase tracking-widest text-gray-500">Welcome to Spa for Cars.</p>
-          <h2 className="font-display font-bold text-4xl md:text-6xl uppercase leading-none">
-            Explore the <span className="text-outline">Catalog</span>.
-          </h2>
-          <p className="font-sans text-lg max-w-2xl mx-auto leading-relaxed">
-             We don't just wash cars; we curate them. Experience the gloss, calm, and precision of a five-star automotive treatment.
-          </p>
-        </div>
-      </section>
-
-      {/* Split Screen Categories (Mens/Womens style) */}
-      <section className="grid grid-cols-1 md:grid-cols-2 border-b border-brand-black">
-        {/* Left: Exterior */}
-        <div className="group relative h-[80vh] border-b md:border-b-0 md:border-r border-brand-black overflow-hidden">
-           <img 
-             src="https://images.unsplash.com/photo-1601362840469-51e4d8d58785?auto=format&fit=crop&q=80&w=1200" 
-             alt="Exterior"
-             className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-           />
-           <div className="absolute inset-0 bg-black/10 group-hover:bg-transparent transition-colors"></div>
-           <div className="absolute bottom-1/2 left-1/2 -translate-x-1/2 translate-y-1/2">
-             <Link to="/services" className="bg-white px-8 py-3 font-display font-bold text-xl uppercase tracking-widest border border-brand-black hover:bg-brand-black hover:text-white transition-colors">
-               Exterior
-             </Link>
-           </div>
-        </div>
-
-        {/* Right: Interior */}
-        <div className="group relative h-[80vh] overflow-hidden">
-           <img 
-             src="https://images.unsplash.com/photo-1549399542-7e3f8b79c341?auto=format&fit=crop&q=80&w=1200" 
-             alt="Interior"
-             className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-           />
-           <div className="absolute inset-0 bg-black/10 group-hover:bg-transparent transition-colors"></div>
-           <div className="absolute bottom-1/2 left-1/2 -translate-x-1/2 translate-y-1/2">
-             <Link to="/services" className="bg-white px-8 py-3 font-display font-bold text-xl uppercase tracking-widest border border-brand-black hover:bg-brand-black hover:text-white transition-colors">
-               Interior
-             </Link>
-           </div>
-        </div>
-      </section>
-
-      {/* Grid Collections/Services */}
-      <div className="border-b border-brand-black flex justify-between items-center p-4 bg-brand-white">
-        <span className="font-mono text-xs uppercase">Featured Services</span>
-        <span className="font-mono text-xs uppercase">Winter 2025</span>
-      </div>
-
-      <section className="grid grid-cols-1 md:grid-cols-3 border-b border-brand-black">
-        {[
-          {
-            title: "Ceramic Coating",
-            price: "$800.00",
-            img: "https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&q=80&w=800"
-          },
-          {
-            title: "Paint Correction",
-            price: "$500.00",
-            img: "https://images.unsplash.com/photo-1552519507-da3b142c6e3d?auto=format&fit=crop&q=80&w=800"
-          },
-          {
-            title: "Full Detail",
-            price: "$295.00",
-            img: "https://images.unsplash.com/photo-1605515298946-d062f2e9da53?auto=format&fit=crop&q=80&w=800"
-          }
-        ].map((item, idx) => (
-          <div key={idx} className={`group border-b md:border-b-0 ${idx !== 2 ? 'md:border-r' : ''} border-brand-black bg-brand-white`}>
-            <div className="relative aspect-[4/5] overflow-hidden border-b border-brand-black">
-               <img src={item.img} alt={item.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500 saturate-0 group-hover:saturate-100" />
-               <div className="absolute top-4 right-4 bg-white border border-brand-black px-2 py-1 font-mono text-xs font-bold">
-                 NEW
-               </div>
-            </div>
-            <div className="p-6 flex flex-col items-center text-center">
-               <h3 className="font-display font-bold text-2xl uppercase mb-2">{item.title}</h3>
-               <p className="font-mono text-sm text-gray-500 mb-4">{item.price}</p>
-               <Link to="/booking" className="text-xs font-mono uppercase underline hover:text-brand-accent">Add to Cart</Link>
             </div>
           </div>
-        ))}
-      </section>
-      
-      {/* Testimonial Ticker */}
-      <div className="bg-brand-black text-white py-12 border-b border-brand-black overflow-hidden relative">
-        <div className="container mx-auto px-4 text-center">
-           <div className="flex justify-center mb-6 text-brand-accent">
-             {[1,2,3,4,5].map(i => <Star key={i} className="fill-current w-6 h-6"/>)}
-           </div>
-           <p className="font-display text-2xl md:text-4xl uppercase leading-tight max-w-4xl mx-auto">
-             "My Tesla has never looked this good. The ceramic coating is a game changer. Pure art."
-           </p>
-           <p className="font-mono text-xs mt-6 text-gray-400">— Alex Johnson, Model S</p>
         </div>
-      </div>
-
-      {/* Lookbook / Gallery Teaser */}
-      <section className="grid grid-cols-1 md:grid-cols-3 border-b border-brand-black h-[60vh]">
-         <div className="border-r border-brand-black overflow-hidden relative group">
-           <img src="https://images.unsplash.com/photo-1617788138017-80ad40651399?auto=format&fit=crop&q=80&w=800" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
-           <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/20 backdrop-blur-sm">
-             <span className="bg-white border border-brand-black px-4 py-2 font-mono text-xs uppercase">Lookbook 01</span>
-           </div>
-         </div>
-         <div className="border-r border-brand-black overflow-hidden relative group">
-           <img src="https://images.unsplash.com/photo-1503376763036-066120622c74?auto=format&fit=crop&q=80&w=800" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
-            <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/20 backdrop-blur-sm">
-             <span className="bg-white border border-brand-black px-4 py-2 font-mono text-xs uppercase">Lookbook 02</span>
-           </div>
-         </div>
-         <div className="overflow-hidden relative group">
-           <img src="https://images.unsplash.com/photo-1494976388531-d1058494cdd8?auto=format&fit=crop&q=80&w=800" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
-            <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/20 backdrop-blur-sm">
-             <span className="bg-white border border-brand-black px-4 py-2 font-mono text-xs uppercase">Lookbook 03</span>
-           </div>
-         </div>
       </section>
 
-      {/* Footer CTA */}
-      <section className="py-24 bg-brand-white text-center">
-        <h2 className="font-display font-bold text-6xl md:text-8xl uppercase mb-8">
-           Ready to <br/><span className="text-outline">Shine?</span>
-        </h2>
-        <Link to="/booking">
-          <Button>Book Appointment</Button>
-        </Link>
+      {/* Why Choose Us */}
+      <section className="py-20 px-4 bg-white">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-16">
+            <h2 className="font-display font-bold text-3xl md:text-5xl uppercase mb-4">
+              Why Choose Us?
+            </h2>
+            <p className="text-gray-500 max-w-3xl mx-auto leading-relaxed">
+              Spa for Cars specializes in high-quality car detailing that restores, protects, and enhances your vehicle. 
+              We are your one-stop shop for deep interior cleaning, exterior polishing, long-lasting ceramic coating, PPF, window tinting, and much more!
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+            {[
+              { icon: Shield, title: 'Ceramic Coating', desc: 'Industry-leading 9H ceramic protection that lasts years, not months.' },
+              { icon: Droplets, title: 'Paint Correction', desc: 'Multi-stage paint correction to eliminate swirls, scratches and oxidation.' },
+              { icon: Car, title: 'Full Detailing', desc: 'Comprehensive interior and exterior detailing for a showroom finish.' },
+              { icon: Sparkles, title: 'Window Tinting', desc: 'Premium window tinting for UV protection, privacy, and style.' },
+            ].map((service, idx) => (
+              <div key={idx} className="text-center p-8 rounded-lg bg-gray-50 hover:bg-neutral-900 hover:text-white group transition-colors duration-300">
+                <div className="w-14 h-14 mx-auto mb-5 flex items-center justify-center rounded-full bg-brand-mclaren/10 group-hover:bg-brand-mclaren/20 transition-colors">
+                  <service.icon className="w-7 h-7 text-brand-mclaren" />
+                </div>
+                <h3 className="font-display font-semibold text-lg uppercase mb-3">{service.title}</h3>
+                <p className="text-sm text-gray-500 group-hover:text-gray-300 leading-relaxed transition-colors">{service.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Services Showcase */}
+      <section className="py-20 px-4 bg-gray-50">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex justify-between items-end mb-12">
+            <div>
+              <p className="text-sm text-brand-mclaren font-semibold uppercase tracking-wide mb-2">Our Services</p>
+              <h2 className="font-display font-bold text-3xl md:text-4xl uppercase">What We Offer</h2>
+            </div>
+            <Link to="/services" className="hidden md:flex items-center gap-2 text-sm font-medium text-neutral-700 hover:text-brand-mclaren transition-colors">
+              View All <ArrowRight className="w-4 h-4" />
+            </Link>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {[
+              {
+                title: 'Ceramic Coating',
+                price: 'From $800',
+                img: 'https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&q=80&w=800',
+              },
+              {
+                title: 'Paint Correction',
+                price: 'From $500',
+                img: 'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?auto=format&fit=crop&q=80&w=800',
+              },
+              {
+                title: 'Full Detail',
+                price: 'From $295',
+                img: 'https://images.unsplash.com/photo-1605515298946-d062f2e9da53?auto=format&fit=crop&q=80&w=800',
+              },
+            ].map((item, idx) => (
+              <Link to="/booking" key={idx} className="group overflow-hidden rounded-lg bg-white shadow-sm hover:shadow-xl transition-shadow duration-300">
+                <div className="relative aspect-[4/3] overflow-hidden">
+                  <img
+                    src={item.img}
+                    alt={item.title}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                  />
+                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors"></div>
+                </div>
+                <div className="p-6">
+                  <h3 className="font-display font-semibold text-xl uppercase mb-1">{item.title}</h3>
+                  <p className="text-sm text-gray-500">{item.price}</p>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Testimonial */}
+      <section className="py-20 bg-neutral-900 text-white">
+        <div className="max-w-4xl mx-auto px-4 text-center">
+          <div className="flex justify-center mb-6 text-brand-mclaren">
+            {[1, 2, 3, 4, 5].map((i) => (
+              <Star key={i} className="fill-current w-5 h-5" />
+            ))}
+          </div>
+          <p className="font-display text-2xl md:text-3xl italic leading-relaxed mb-6">
+            "My Tesla has never looked this good. The ceramic coating is a game changer. Pure art."
+          </p>
+          <p className="text-sm text-gray-400">— Alex Johnson, Tesla Model S Owner</p>
+        </div>
+      </section>
+
+      {/* Gallery Teaser */}
+      <section className="py-20 px-4 bg-white">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-12">
+            <p className="text-sm text-brand-mclaren font-semibold uppercase tracking-wide mb-2">Our Work</p>
+            <h2 className="font-display font-bold text-3xl md:text-4xl uppercase">Recent Projects</h2>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {[
+              'https://images.unsplash.com/photo-1617788138017-80ad40651399?auto=format&fit=crop&q=80&w=800',
+              'https://images.unsplash.com/photo-1503376763036-066120622c74?auto=format&fit=crop&q=80&w=800',
+              'https://images.unsplash.com/photo-1494976388531-d1058494cdd8?auto=format&fit=crop&q=80&w=800',
+            ].map((img, i) => (
+              <div key={i} className="group relative aspect-[4/3] overflow-hidden rounded-lg">
+                <img
+                  src={img}
+                  className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                />
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center">
+                  <span className="opacity-0 group-hover:opacity-100 transition-opacity text-white font-display font-semibold text-sm uppercase tracking-wider">
+                    View Project
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="text-center mt-8">
+            <Link
+              to="/gallery"
+              className="inline-flex items-center gap-2 text-sm font-medium text-neutral-700 hover:text-brand-mclaren transition-colors"
+            >
+              View Full Gallery <ArrowRight className="w-4 h-4" />
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* CTA Section */}
+      <section className="py-20 bg-gradient-to-r from-neutral-900 to-neutral-800 text-center">
+        <div className="max-w-3xl mx-auto px-4">
+          <h2 className="font-display font-bold text-4xl md:text-5xl uppercase text-white mb-4">
+            Ready to Transform Your Vehicle?
+          </h2>
+          <p className="text-gray-400 mb-8">
+            Book your appointment today and experience the Spa for Cars difference.
+          </p>
+          <Link
+            to="/booking"
+            className="inline-flex items-center gap-3 bg-brand-mclaren hover:bg-orange-600 text-white font-display font-semibold text-sm uppercase px-8 py-4 tracking-wider transition-colors rounded"
+          >
+            Book Appointment <ArrowRight className="w-4 h-4" />
+          </Link>
+        </div>
       </section>
     </div>
   );
