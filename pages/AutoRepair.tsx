@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Wrench } from 'lucide-react';
 import Button from '../components/Button';
+import ServiceNotice from '../components/ServiceNotice';
 
 const AutoRepair: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -50,6 +51,7 @@ const AutoRepair: React.FC = () => {
           </form>
         )}
       </div>
+      <ServiceNotice />
     </div>
   );
 };

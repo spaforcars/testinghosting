@@ -2,6 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { Clock3, ShieldCheck, Sparkles } from 'lucide-react';
 import Button from '../components/Button';
+import ServiceNotice from '../components/ServiceNotice';
 import { Service } from '../types';
 
 const Services: React.FC = () => {
@@ -159,6 +160,7 @@ const Services: React.FC = () => {
           ))}
         </div>
       </section>
+      <ServiceNotice />
     </div>
   );
 };

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight, Clock3 } from 'lucide-react';
 import Button from '../components/Button';
+import ServiceNotice from '../components/ServiceNotice';
 
 type BookingService = {
   id: string;
@@ -366,6 +367,7 @@ const Booking: React.FC = () => {
           </div>
         </div>
       </section>
+      <ServiceNotice />
     </div>
   );
 };

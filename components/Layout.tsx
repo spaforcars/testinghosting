@@ -9,7 +9,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const primaryLinks = [
     { name: 'Home', path: '/' },
     { name: 'Services', path: '/services' },
-    { name: 'Pricing', path: '/pricing' },
+    { name: 'Repair', path: '/auto-repair' },
     { name: 'Showcase', path: '/gallery' },
     { name: 'Fleet', path: '/fleet' },
     { name: 'About', path: '/about' },
@@ -19,7 +19,6 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const secondaryLinks = [
     { name: 'FAQ', path: '/faq' },
     { name: 'Gift Cards', path: '/gift-cards' },
-    { name: 'Auto Repair', path: '/auto-repair' },
   ];
 
   const isActive = (path: string) =>

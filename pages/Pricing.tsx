@@ -2,6 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { Check, X } from 'lucide-react';
 import Button from '../components/Button';
+import ServiceNotice from '../components/ServiceNotice';
 
 const Pricing: React.FC = () => {
   const tiers = [
@@ -131,6 +132,7 @@ const Pricing: React.FC = () => {
           </div>
         </div>
       </section>
+      <ServiceNotice />
     </div>
   );
 };

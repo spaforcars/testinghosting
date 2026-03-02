@@ -1,6 +1,7 @@
 import React from 'react';
 import { Building2, Briefcase, ShieldCheck } from 'lucide-react';
 import Button from '../components/Button';
+import ServiceNotice from '../components/ServiceNotice';
 
 const Fleet: React.FC = () => {
   return (
@@ -11,7 +12,7 @@ const Fleet: React.FC = () => {
             Commercial Programs
           </span>
           <h1 className="mt-5 max-w-4xl font-display text-4xl font-bold uppercase leading-[0.95] text-brand-black md:text-6xl">
-            Reliable Detailing For Dealerships And Fleets
+            Premium Detailing for Private Owners & Commercial Fleets
           </h1>
           <p className="mt-6 max-w-3xl text-base leading-relaxed text-gray-600 md:text-lg">
             We deliver consistent turnaround, clean reporting, and scalable service plans for businesses that need vehicle presentation standards maintained.
@@ -100,6 +101,7 @@ const Fleet: React.FC = () => {
           </form>
         </div>
       </section>
+      <ServiceNotice />
     </div>
   );
 };

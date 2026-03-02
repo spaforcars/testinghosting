@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, Star, Shield, Droplets, Car, Sparkles } from 'lucide-react';
+import ServiceNotice from '../components/ServiceNotice';
 
 const Home: React.FC = () => {
   return (
@@ -8,7 +9,7 @@ const Home: React.FC = () => {
       {/* Hero Section */}
       <section className="relative w-full h-[90vh] overflow-hidden">
         <img
-          src="/client-images/IMG_2415.PNG"
+          src="/client-images/hero-section-pic.PNG"
           alt="Hero Car"
           className="w-full h-full object-cover object-center"
         />
@@ -189,6 +190,7 @@ const Home: React.FC = () => {
           </Link>
         </div>
       </section>
+      <ServiceNotice />
     </div>
   );
 };
