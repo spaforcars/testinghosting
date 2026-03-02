@@ -19,7 +19,7 @@ const About: React.FC = () => {
           <div className="relative">
             <div className="border border-brand-black p-2">
               <img 
-                src="https://images.unsplash.com/photo-1600880292203-757bb62b4baf?auto=format&fit=crop&q=80&w=800" 
+                src="/client-images/IMG_2417.PNG" 
                 alt="Detailing Team" 
                 className="w-full h-auto grayscale hover:grayscale-0 transition-all duration-500"
               />

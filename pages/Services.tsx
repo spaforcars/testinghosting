@@ -14,7 +14,7 @@ const Services: React.FC = () => {
       price: '$95+',
       duration: '1.5 Hours',
       features: ['Foam Hand Wash', 'Wheel Cleaning', 'Vacuum & Wipe Down', 'Tire Dressing', 'Spray Wax'],
-      image: 'https://images.unsplash.com/photo-1601362840469-51e4d8d58785?auto=format&fit=crop&q=80&w=800'
+      image: '/client-images/IMG_2414.PNG'
     },
     {
       id: '2',
@@ -24,7 +24,7 @@ const Services: React.FC = () => {
       price: '$295+',
       duration: '4 Hours',
       features: ['Everything in Refresh', 'Clay Bar Treatment', 'Machine Polish', 'Leather Conditioning', 'Steam Clean', '6-Month Sealant'],
-      image: 'https://images.unsplash.com/photo-1520340356584-f9917d1eea6f?auto=format&fit=crop&q=80&w=800'
+      image: '/client-images/IMG_2461.PNG'
     },
     {
       id: '3',
@@ -34,7 +34,7 @@ const Services: React.FC = () => {
       price: '$800+',
       duration: '1 Day',
       features: ['3-Year Warranty', 'Paint Correction', 'Extreme Hydrophobicity', 'UV Protection', 'Self-Cleaning'],
-      image: 'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?auto=format&fit=crop&q=80&w=800'
+      image: '/client-images/IMG_2449.PNG'
     },
     {
       id: '4',
@@ -44,7 +44,7 @@ const Services: React.FC = () => {
       price: '$1,800+',
       duration: '2 Days',
       features: ['10-Year Warranty', 'Self-Healing Film', 'Covers Bumper/Hood', 'Invisible Edges', 'Stain Resistant'],
-      image: 'https://images.unsplash.com/photo-1623886567540-3b242e232766?auto=format&fit=crop&q=80&w=800'
+      image: '/client-images/IMG_2421_after.PNG'
     }
   ];
 

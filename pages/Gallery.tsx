@@ -6,33 +6,33 @@ const Gallery: React.FC = () => {
   const transformations = [
     { 
       label: "Paint Correction",
-      before: "https://images.unsplash.com/photo-1582239634289-e58f0003c27e?auto=format&fit=crop&q=80&w=800&sat=-100&bri=-20", // Simulated dull/dirty
-      after: "https://images.unsplash.com/photo-1552519507-da3b142c6e3d?auto=format&fit=crop&q=80&w=800" 
+      before: "/client-images/IMG_2414.PNG",
+      after: "/client-images/IMG_2415.PNG" 
     },
     { 
       label: "Interior Restoration", 
-      before: "https://images.unsplash.com/photo-1517056285-d857038d810a?auto=format&fit=crop&q=80&w=800&sat=-50",
-      after: "https://images.unsplash.com/photo-1549399542-7e3f8b79c341?auto=format&fit=crop&q=80&w=800" 
+      before: "/client-images/IMG_2460_before.PNG",
+      after: "/client-images/IMG_2460_after.PNG" 
     },
     { 
-      label: "Ceramic Coating", 
-      before: "https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?auto=format&fit=crop&q=80&w=800&blur=2",
-      after: "https://images.unsplash.com/photo-1601362840469-51e4d8d58785?auto=format&fit=crop&q=80&w=800" 
+      label: "Steering Restoration", 
+      before: "/client-images/IMG_2439_before.PNG",
+      after: "/client-images/IMG_2439_after.PNG" 
     },
     { 
-      label: "Engine Bay Detail", 
-      before: "https://images.unsplash.com/photo-1486262715619-67b85e0b08d3?auto=format&fit=crop&q=80&w=800&sepia=100", 
-      after: "https://images.unsplash.com/photo-1562519819-016930d6756b?auto=format&fit=crop&q=80&w=800" 
+      label: "Leather Seat Restoration", 
+      before: "/client-images/IMG_2445_before.PNG", 
+      after: "/client-images/IMG_2445_after.PNG" 
     },
     { 
-      label: "Headlight Restoration", 
-      before: "https://images.unsplash.com/photo-1459603677915-a62079ffd030?auto=format&fit=crop&q=80&w=800&blur=5", 
-      after: "https://images.unsplash.com/photo-1605515298946-d062f2e9da53?auto=format&fit=crop&q=80&w=800" 
+      label: "Trim Refinement", 
+      before: "/client-images/IMG_2421_before.PNG", 
+      after: "/client-images/IMG_2421_after.PNG" 
     },
     { 
-      label: "Wheel Polishing", 
-      before: "https://images.unsplash.com/photo-1563720360172-67b8f3dcebb0?auto=format&fit=crop&q=80&w=800&sat=-100", 
-      after: "https://images.unsplash.com/photo-1580273916550-e323be2ebccd?auto=format&fit=crop&q=80&w=800" 
+      label: "Panel Correction", 
+      before: "/client-images/IMG_2418_before.PNG", 
+      after: "/client-images/IMG_2418_after.PNG" 
     },
   ];
 
