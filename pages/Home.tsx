@@ -26,7 +26,7 @@ const Home: React.FC = () => {
               </p>
               <Link
                 to="/booking"
-                className="inline-flex items-center gap-3 bg-brand-mclaren hover:bg-orange-600 text-white font-display font-semibold text-sm md:text-base uppercase px-8 py-4 tracking-wider transition-colors rounded"
+                className="inline-flex items-center gap-3 rounded-lg bg-brand-mclaren px-8 py-4 font-display text-sm font-semibold uppercase tracking-[0.08em] text-white transition-colors hover:bg-orange-600 md:text-base"
               >
                 Get Started <ArrowRight className="w-4 h-4" />
               </Link>
@@ -55,12 +55,12 @@ const Home: React.FC = () => {
               { icon: Car, title: 'Full Detailing', desc: 'Comprehensive interior and exterior detailing for a showroom finish.' },
               { icon: Sparkles, title: 'Window Tinting', desc: 'Premium window tinting for UV protection, privacy, and style.' },
             ].map((service, idx) => (
-              <div key={idx} className="text-center p-8 rounded-lg bg-gray-50 hover:bg-neutral-900 hover:text-white group transition-colors duration-300">
-                <div className="w-14 h-14 mx-auto mb-5 flex items-center justify-center rounded-full bg-brand-mclaren/10 group-hover:bg-brand-mclaren/20 transition-colors">
+              <div key={idx} className="group rounded-2xl border border-neutral-200 bg-white p-8 text-center shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-md">
+                <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-full bg-brand-mclaren/10 transition-colors group-hover:bg-brand-mclaren/20">
                   <service.icon className="w-7 h-7 text-brand-mclaren" />
                 </div>
                 <h3 className="font-display font-semibold text-lg uppercase mb-3">{service.title}</h3>
-                <p className="text-sm text-gray-500 group-hover:text-gray-300 leading-relaxed transition-colors">{service.desc}</p>
+                <p className="text-sm leading-relaxed text-gray-500 transition-colors">{service.desc}</p>
               </div>
             ))}
           </div>
@@ -98,7 +98,7 @@ const Home: React.FC = () => {
                 img: '/client-images/IMG_2461.PNG',
               },
             ].map((item, idx) => (
-              <Link to="/booking" key={idx} className="group overflow-hidden rounded-lg bg-white shadow-sm hover:shadow-xl transition-shadow duration-300">
+              <Link to="/booking" key={idx} className="group overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm transition-shadow duration-300 hover:shadow-lg">
                 <div className="relative aspect-[4/3] overflow-hidden">
                   <img
                     src={item.img}
@@ -128,7 +128,7 @@ const Home: React.FC = () => {
           <p className="font-display text-2xl md:text-3xl italic leading-relaxed mb-6">
             "My Tesla has never looked this good. The ceramic coating is a game changer. Pure art."
           </p>
-          <p className="text-sm text-gray-400">— Alex Johnson, Tesla Model S Owner</p>
+          <p className="text-sm text-gray-400">- Alex Johnson, Tesla Model S Owner</p>
         </div>
       </section>
 
@@ -146,9 +146,10 @@ const Home: React.FC = () => {
               '/client-images/IMG_2449.PNG',
               '/client-images/IMG_2462.PNG',
             ].map((img, i) => (
-              <div key={i} className="group relative aspect-[4/3] overflow-hidden rounded-lg">
+              <div key={i} className="group relative aspect-[4/3] overflow-hidden rounded-2xl border border-neutral-200">
                 <img
                   src={img}
+                  alt={`Recent project ${i + 1}`}
                   className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
                 />
                 <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center">
@@ -182,7 +183,7 @@ const Home: React.FC = () => {
           </p>
           <Link
             to="/booking"
-            className="inline-flex items-center gap-3 bg-brand-mclaren hover:bg-orange-600 text-white font-display font-semibold text-sm uppercase px-8 py-4 tracking-wider transition-colors rounded"
+            className="inline-flex items-center gap-3 rounded-lg bg-brand-mclaren px-8 py-4 font-display text-sm font-semibold uppercase tracking-[0.08em] text-white transition-colors hover:bg-orange-600"
           >
             Book Appointment <ArrowRight className="w-4 h-4" />
           </Link>

@@ -25,18 +25,25 @@ const BeforeAfterSlider: React.FC<BeforeAfterProps> = ({ beforeImage, afterImage
     isDragging.current = true;
   };
 
-  const handleMouseUp = () => {
-    isDragging.current = false;
-  };
-
   const handleMouseMove = (e: React.MouseEvent) => {
     if (isDragging.current) {
       handleMove(e.clientX);
     }
   };
 
-  const handleTouchMove = (e: React.TouchEvent) => {
+  const handleTouchStart = (e: React.TouchEvent) => {
+    isDragging.current = true;
     handleMove(e.touches[0].clientX);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (isDragging.current) {
+      handleMove(e.touches[0].clientX);
+    }
+  };
+
+  const handleTouchEnd = () => {
+    isDragging.current = false;
   };
 
   useEffect(() => {
@@ -48,49 +55,55 @@ const BeforeAfterSlider: React.FC<BeforeAfterProps> = ({ beforeImage, afterImage
   }, []);
 
   return (
-    <div className="relative w-full h-[500px] overflow-hidden cursor-ew-resize group select-none border-b border-r border-brand-black bg-brand-gray"
+    <div
+      className="group relative h-[380px] w-full select-none overflow-hidden rounded-2xl border border-neutral-200 bg-neutral-100 shadow-sm sm:h-[440px] lg:h-[500px]"
          ref={containerRef}
          onMouseDown={handleMouseDown}
          onMouseMove={handleMouseMove}
+         onMouseLeave={() => { isDragging.current = false; }}
+         onTouchStart={handleTouchStart}
          onTouchMove={handleTouchMove}
+         onTouchEnd={handleTouchEnd}
     >
       {/* After Image (Background) */}
       <div 
         className="absolute inset-0 w-full h-full bg-cover bg-center"
         style={{ backgroundImage: `url(${afterImage})` }}
       >
-         <div className="absolute top-4 right-4 bg-brand-black text-white text-xs font-mono font-bold px-3 py-1 uppercase tracking-wider">
+         <div className="absolute right-4 top-4 rounded-md bg-brand-black/90 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-white">
           After
          </div>
       </div>
 
       {/* Before Image (Clipped) */}
       <div 
-        className="absolute inset-0 h-full bg-cover bg-center border-r-2 border-brand-white"
+        className="absolute inset-0 h-full border-r-2 border-white/80 bg-cover bg-center"
         style={{ 
           backgroundImage: `url(${beforeImage})`,
           width: `${sliderPosition}%` 
         }}
       >
-        <div className="absolute top-4 left-4 bg-white border border-brand-black text-brand-black text-xs font-mono font-bold px-3 py-1 uppercase tracking-wider">
+        <div className="absolute left-4 top-4 rounded-md border border-neutral-200 bg-white/95 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-brand-black">
           Before
         </div>
       </div>
 
       {/* Slider Handle */}
       <div 
-        className="absolute top-0 bottom-0 w-1 bg-white cursor-ew-resize flex items-center justify-center z-10"
+        className="absolute bottom-0 top-0 z-10 flex w-1 cursor-ew-resize items-center justify-center bg-white/90"
         style={{ left: `${sliderPosition}%` }}
       >
-        <div className="w-12 h-12 bg-brand-black flex items-center justify-center -ml-[2px] text-white transition-transform hover:scale-110 border-2 border-white">
-          <ChevronsLeftRight className="w-6 h-6" />
+        <div className="-ml-[2px] flex h-11 w-11 items-center justify-center rounded-full border-2 border-white bg-brand-black text-white shadow-lg transition-transform group-hover:scale-105">
+          <ChevronsLeftRight className="h-5 w-5" />
         </div>
       </div>
       
       {/* Label */}
       {label && (
-        <div className="absolute bottom-6 left-6 bg-white border border-brand-black px-6 py-3 pointer-events-none z-20">
-          <span className="font-display font-bold uppercase text-lg tracking-wide text-brand-black">{label}</span>
+        <div className="pointer-events-none absolute bottom-4 left-4 z-20 rounded-md border border-neutral-200 bg-white/95 px-4 py-2">
+          <span className="font-display text-sm font-semibold uppercase tracking-[0.08em] text-brand-black sm:text-base">
+            {label}
+          </span>
         </div>
       )}
     </div>

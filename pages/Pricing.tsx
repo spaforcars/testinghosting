@@ -1,7 +1,7 @@
 import React from 'react';
-import Button from '../components/Button';
-import { Check, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { Check, X } from 'lucide-react';
+import Button from '../components/Button';
 
 const Pricing: React.FC = () => {
   const tiers = [
@@ -19,7 +19,7 @@ const Pricing: React.FC = () => {
         { name: 'Machine Polish', included: false },
         { name: 'Leather Conditioning', included: false },
         { name: 'Ceramic Sealant', included: false },
-      ]
+      ],
     },
     {
       name: 'Signature Detail',
@@ -36,12 +36,12 @@ const Pricing: React.FC = () => {
         { name: 'Machine Polish', included: true },
         { name: 'Leather Conditioning', included: true },
         { name: 'Ceramic Sealant', included: true },
-      ]
+      ],
     },
     {
       name: 'Ceramic Coating',
       price: '$800',
-      description: 'Ultimate protection and shine.',
+      description: 'Long-term protection and premium gloss.',
       features: [
         { name: 'Foam Hand Wash', included: true },
         { name: 'Wheel Cleaning', included: true },
@@ -52,69 +52,85 @@ const Pricing: React.FC = () => {
         { name: 'Machine Polish', included: true },
         { name: 'Leather Conditioning', included: true },
         { name: 'Ceramic Sealant', included: true },
-      ]
-    }
+      ],
+    },
   ];
 
   return (
-    <div className="bg-brand-white">
-      <div className="py-24 border-b border-brand-black px-4 text-center">
-         <h1 className="text-[10vw] md:text-[8vw] leading-none font-display font-bold uppercase mb-4">Pricing</h1>
-         <p className="font-mono text-sm uppercase max-w-md mx-auto text-gray-500">
-           Transparent pricing for premium care. No hidden fees.
-         </p>
-      </div>
+    <div className="min-h-screen bg-brand-gray">
+      <section className="border-b border-neutral-200 bg-gradient-to-b from-white to-neutral-50 px-4 py-16 md:py-20">
+        <div className="mx-auto max-w-7xl">
+          <span className="inline-block rounded-full bg-orange-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.08em] text-brand-mclaren">
+            Transparent Pricing
+          </span>
+          <h1 className="mt-5 max-w-4xl font-display text-4xl font-bold uppercase leading-[0.95] text-brand-black md:text-6xl">
+            Premium Care Without Hidden Fees
+          </h1>
+          <p className="mt-6 max-w-3xl text-base leading-relaxed text-gray-600 md:text-lg">
+            Choose a package based on your vehicle condition and finish expectations. We can always tailor from here.
+          </p>
+        </div>
+      </section>
 
-      <div className="container mx-auto px-4 py-16">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+      <section className="px-4 py-16 md:py-20">
+        <div className="mx-auto grid max-w-7xl gap-6 md:grid-cols-3">
           {tiers.map((tier, index) => (
-            <div key={index} className={`border border-brand-black p-8 flex flex-col relative ${tier.highlight ? 'bg-brand-black text-white' : 'bg-white'}`}>
+            <article
+              key={tier.name}
+              className={`relative rounded-2xl border p-8 shadow-sm ${
+                tier.highlight
+                  ? 'border-brand-black bg-brand-black text-white'
+                  : 'border-neutral-200 bg-white text-brand-black'
+              }`}
+            >
               {tier.highlight && (
-                <div className="absolute top-0 right-0 bg-brand-accent text-white text-xs font-mono font-bold px-3 py-1 uppercase">
+                <div className="absolute right-4 top-4 rounded-full bg-orange-200 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-brand-black">
                   Most Popular
                 </div>
               )}
-              <h3 className="font-display font-bold text-3xl uppercase mb-2">{tier.name}</h3>
-              <div className="font-mono text-4xl font-bold mb-4">{tier.price}</div>
-              <p className={`font-mono text-xs uppercase mb-8 ${tier.highlight ? 'text-gray-400' : 'text-gray-500'}`}>{tier.description}</p>
-              
-              <div className="flex-grow space-y-4 mb-8">
-                {tier.features.map((feature, i) => (
-                  <div key={i} className="flex items-center gap-3">
+
+              <h2 className="font-display text-3xl font-semibold uppercase">{tier.name}</h2>
+              <p className="mt-2 text-4xl font-bold">{tier.price}</p>
+              <p className={`mt-3 text-sm ${tier.highlight ? 'text-neutral-300' : 'text-gray-600'}`}>{tier.description}</p>
+
+              <div className="mt-6 space-y-3">
+                {tier.features.map((feature) => (
+                  <div key={feature.name} className="flex items-start gap-2 text-sm">
                     {feature.included ? (
-                      <Check className={`w-4 h-4 ${tier.highlight ? 'text-brand-accent' : 'text-brand-black'}`} />
+                      <Check className={`mt-0.5 h-4 w-4 shrink-0 ${tier.highlight ? 'text-orange-200' : 'text-brand-mclaren'}`} />
                     ) : (
-                      <X className="w-4 h-4 text-gray-300" />
+                      <X className="mt-0.5 h-4 w-4 shrink-0 text-gray-300" />
                     )}
-                    <span className={`font-mono text-xs uppercase ${!feature.included && 'text-gray-300 line-through'}`}>
-                      {feature.name}
-                    </span>
+                    <span className={!feature.included ? 'text-gray-400 line-through' : ''}>{feature.name}</span>
                   </div>
                 ))}
               </div>
 
-              <Link to={`/booking?service=${index + 1}`} className="w-full">
-                <Button variant={tier.highlight ? 'white' : 'black'} className="w-full justify-center">
-                  Select Plan
-                </Button>
-              </Link>
-            </div>
+              <div className="mt-8">
+                <Link to={`/booking?service=${index + 1}`}>
+                  <Button variant={tier.highlight ? 'white' : 'primary'} fullWidth>
+                    Select Plan
+                  </Button>
+                </Link>
+              </div>
+            </article>
           ))}
         </div>
-      </div>
-      
-      {/* Additional Info */}
-      <div className="border-t border-brand-black py-16 px-4 bg-gray-50">
-        <div className="container mx-auto text-center max-w-2xl">
-           <h3 className="font-display font-bold text-2xl uppercase mb-4">Custom Projects</h3>
-           <p className="font-sans text-lg mb-8">
-             Have a classic car, fleet, or specific requirement? We offer tailored packages for unique vehicles.
-           </p>
-           <Link to="/contact">
-             <span className="font-mono text-xs uppercase underline hover:text-brand-accent">Contact for Quote</span>
-           </Link>
+      </section>
+
+      <section className="border-t border-neutral-200 bg-white px-4 py-16">
+        <div className="mx-auto max-w-3xl text-center">
+          <h3 className="font-display text-3xl font-bold uppercase text-brand-black">Need A Custom Scope?</h3>
+          <p className="mt-4 text-base leading-relaxed text-gray-600">
+            For fleet contracts, restoration projects, or unique vehicles, we can build a custom plan around your needs.
+          </p>
+          <div className="mt-8">
+            <Link to="/contact">
+              <Button variant="outline">Request Custom Quote</Button>
+            </Link>
+          </div>
         </div>
-      </div>
+      </section>
     </div>
   );
 };

@@ -1,87 +1,89 @@
 import React from 'react';
-import { Building2, Briefcase, Truck, ArrowRight } from 'lucide-react';
+import { Building2, Briefcase, ShieldCheck } from 'lucide-react';
 import Button from '../components/Button';
 
 const Fleet: React.FC = () => {
   return (
-    <div className="bg-brand-white">
-      {/* B2B Hero */}
-      <section className="py-24 px-4 border-b border-brand-black bg-brand-gray">
-        <div className="container mx-auto text-center max-w-4xl">
-          <span className="font-mono text-xs uppercase tracking-widest bg-brand-black text-white px-2 py-1">Commercial Services</span>
-          <h1 className="text-[8vw] md:text-[6vw] leading-none font-display font-bold uppercase mt-8 mb-6">Partner with<br/>Precision.</h1>
-          <p className="font-mono text-sm md:text-base max-w-2xl mx-auto">
-            Reliable detailing solutions for Dealerships and Corporate Fleets. 
-            We deliver showroom consistency at scale.
+    <div className="min-h-screen bg-brand-gray">
+      <section className="border-b border-neutral-200 bg-gradient-to-b from-white to-neutral-50 px-4 py-16 md:py-20">
+        <div className="mx-auto max-w-7xl">
+          <span className="inline-block rounded-full bg-orange-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.08em] text-brand-mclaren">
+            Commercial Programs
+          </span>
+          <h1 className="mt-5 max-w-4xl font-display text-4xl font-bold uppercase leading-[0.95] text-brand-black md:text-6xl">
+            Reliable Detailing For Dealerships And Fleets
+          </h1>
+          <p className="mt-6 max-w-3xl text-base leading-relaxed text-gray-600 md:text-lg">
+            We deliver consistent turnaround, clean reporting, and scalable service plans for businesses that need vehicle presentation standards maintained.
           </p>
         </div>
       </section>
 
-      {/* Two Paths */}
-      <section className="border-b border-brand-black">
-        <div className="grid md:grid-cols-2">
-          {/* Dealerships */}
-          <div className="border-b md:border-b-0 md:border-r border-brand-black p-12 hover:bg-gray-50 transition-colors group">
-            <Building2 className="w-12 h-12 mb-8" />
-            <h2 className="font-display font-bold text-4xl uppercase mb-6">Dealerships</h2>
-            <ul className="space-y-4 mb-12 font-mono text-xs uppercase">
-              <li className="flex gap-3 border-b border-gray-200 pb-2">Pre-delivery inspections (PDI) detail</li>
-              <li className="flex gap-3 border-b border-gray-200 pb-2">Lot maintenance washes</li>
-              <li className="flex gap-3 border-b border-gray-200 pb-2">Showroom gloss enhancement</li>
-              <li className="flex gap-3 border-b border-gray-200 pb-2">24-hour turnaround guarantee</li>
+      <section className="px-4 py-16 md:py-20">
+        <div className="mx-auto grid max-w-7xl gap-6 md:grid-cols-2">
+          <article className="rounded-2xl border border-neutral-200 bg-white p-8 shadow-sm">
+            <Building2 className="h-10 w-10 text-brand-mclaren" />
+            <h2 className="mt-5 font-display text-3xl font-semibold uppercase text-brand-black">Dealerships</h2>
+            <ul className="mt-6 space-y-3 text-sm text-gray-600">
+              <li className="flex items-start gap-2"><ShieldCheck className="mt-0.5 h-4 w-4 text-brand-mclaren" />Pre-delivery inspection detailing</li>
+              <li className="flex items-start gap-2"><ShieldCheck className="mt-0.5 h-4 w-4 text-brand-mclaren" />Lot maintenance wash scheduling</li>
+              <li className="flex items-start gap-2"><ShieldCheck className="mt-0.5 h-4 w-4 text-brand-mclaren" />Showroom finish enhancement</li>
+              <li className="flex items-start gap-2"><ShieldCheck className="mt-0.5 h-4 w-4 text-brand-mclaren" />Priority turnaround windows</li>
             </ul>
-            <Button variant="outline">Request Dealer Rates</Button>
-          </div>
+            <div className="mt-8">
+              <Button variant="outline">Request Dealer Rates</Button>
+            </div>
+          </article>
 
-          {/* Corporate Fleets */}
-          <div className="p-12 hover:bg-gray-50 transition-colors group">
-            <Briefcase className="w-12 h-12 mb-8" />
-            <h2 className="font-display font-bold text-4xl uppercase mb-6">Corporate Fleets</h2>
-            <ul className="space-y-4 mb-12 font-mono text-xs uppercase">
-              <li className="flex gap-3 border-b border-gray-200 pb-2">Monthly mobile maintenance plans</li>
-              <li className="flex gap-3 border-b border-gray-200 pb-2">Consolidated monthly invoicing</li>
-              <li className="flex gap-3 border-b border-gray-200 pb-2">Employee perk programs</li>
-              <li className="flex gap-3 border-b border-gray-200 pb-2">Executive vehicle care</li>
+          <article className="rounded-2xl border border-neutral-200 bg-white p-8 shadow-sm">
+            <Briefcase className="h-10 w-10 text-brand-mclaren" />
+            <h2 className="mt-5 font-display text-3xl font-semibold uppercase text-brand-black">Corporate Fleets</h2>
+            <ul className="mt-6 space-y-3 text-sm text-gray-600">
+              <li className="flex items-start gap-2"><ShieldCheck className="mt-0.5 h-4 w-4 text-brand-mclaren" />Monthly or bi-weekly service plans</li>
+              <li className="flex items-start gap-2"><ShieldCheck className="mt-0.5 h-4 w-4 text-brand-mclaren" />Consolidated invoicing</li>
+              <li className="flex items-start gap-2"><ShieldCheck className="mt-0.5 h-4 w-4 text-brand-mclaren" />On-site and studio service options</li>
+              <li className="flex items-start gap-2"><ShieldCheck className="mt-0.5 h-4 w-4 text-brand-mclaren" />Executive vehicle care tiers</li>
             </ul>
-            <Button variant="outline">Get Fleet Quote</Button>
-          </div>
+            <div className="mt-8">
+              <Button variant="outline">Get Fleet Quote</Button>
+            </div>
+          </article>
         </div>
       </section>
 
-      {/* Quote Form */}
-      <section className="py-24 px-4 bg-brand-white">
-        <div className="container mx-auto max-w-3xl border border-brand-black p-8 md:p-12 shadow-[12px_12px_0px_0px_rgba(0,0,0,1)]">
-          <div className="mb-12">
-            <h2 className="font-display font-bold text-4xl uppercase mb-4">Request Proposal</h2>
-            <p className="font-mono text-xs uppercase text-gray-500">Tell us about your volume and needs.</p>
-          </div>
-          
-          <form className="space-y-6">
-            <div className="grid md:grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <label className="font-mono text-xs uppercase font-bold">Company Name</label>
-                <input type="text" className="w-full border border-brand-black p-3 font-mono text-sm focus:outline-none focus:bg-gray-50 rounded-none"/>
+      <section className="border-t border-neutral-200 bg-white px-4 py-16 md:py-20">
+        <div className="mx-auto max-w-3xl rounded-2xl border border-neutral-200 bg-brand-gray p-8 shadow-sm md:p-10">
+          <h3 className="font-display text-3xl font-semibold uppercase text-brand-black">Request Proposal</h3>
+          <p className="mt-3 text-sm leading-relaxed text-gray-600">
+            Share your monthly volume and service expectations. We will provide a tailored plan and pricing recommendation.
+          </p>
+
+          <form className="mt-8 space-y-5">
+            <div className="grid gap-5 md:grid-cols-2">
+              <div>
+                <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.08em] text-gray-500">Company Name</label>
+                <input type="text" className="w-full rounded-lg border border-neutral-300 bg-white px-4 py-3 text-sm text-brand-black focus:border-brand-mclaren focus:outline-none" />
               </div>
-              <div className="space-y-2">
-                <label className="font-mono text-xs uppercase font-bold">Contact Person</label>
-                <input type="text" className="w-full border border-brand-black p-3 font-mono text-sm focus:outline-none focus:bg-gray-50 rounded-none"/>
-              </div>
-            </div>
-            
-            <div className="grid md:grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <label className="font-mono text-xs uppercase font-bold">Email Address</label>
-                <input type="email" className="w-full border border-brand-black p-3 font-mono text-sm focus:outline-none focus:bg-gray-50 rounded-none"/>
-              </div>
-              <div className="space-y-2">
-                <label className="font-mono text-xs uppercase font-bold">Phone Number</label>
-                <input type="tel" className="w-full border border-brand-black p-3 font-mono text-sm focus:outline-none focus:bg-gray-50 rounded-none"/>
+              <div>
+                <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.08em] text-gray-500">Contact Person</label>
+                <input type="text" className="w-full rounded-lg border border-neutral-300 bg-white px-4 py-3 text-sm text-brand-black focus:border-brand-mclaren focus:outline-none" />
               </div>
             </div>
 
-            <div className="space-y-2">
-              <label className="font-mono text-xs uppercase font-bold">Estimated Monthly Volume</label>
-              <select className="w-full border border-brand-black p-3 font-mono text-sm focus:outline-none focus:bg-gray-50 rounded-none bg-white">
+            <div className="grid gap-5 md:grid-cols-2">
+              <div>
+                <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.08em] text-gray-500">Email Address</label>
+                <input type="email" className="w-full rounded-lg border border-neutral-300 bg-white px-4 py-3 text-sm text-brand-black focus:border-brand-mclaren focus:outline-none" />
+              </div>
+              <div>
+                <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.08em] text-gray-500">Phone Number</label>
+                <input type="tel" className="w-full rounded-lg border border-neutral-300 bg-white px-4 py-3 text-sm text-brand-black focus:border-brand-mclaren focus:outline-none" />
+              </div>
+            </div>
+
+            <div>
+              <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.08em] text-gray-500">Estimated Monthly Volume</label>
+              <select className="w-full rounded-lg border border-neutral-300 bg-white px-4 py-3 text-sm text-brand-black focus:border-brand-mclaren focus:outline-none">
                 <option>1-5 Vehicles</option>
                 <option>5-20 Vehicles</option>
                 <option>20-50 Vehicles</option>
@@ -89,9 +91,9 @@ const Fleet: React.FC = () => {
               </select>
             </div>
 
-            <div className="space-y-2">
-               <label className="font-mono text-xs uppercase font-bold">Additional Details</label>
-               <textarea className="w-full border border-brand-black p-3 font-mono text-sm focus:outline-none focus:bg-gray-50 h-32 rounded-none"></textarea>
+            <div>
+              <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.08em] text-gray-500">Additional Details</label>
+              <textarea className="h-32 w-full rounded-lg border border-neutral-300 bg-white px-4 py-3 text-sm text-brand-black focus:border-brand-mclaren focus:outline-none" />
             </div>
 
             <Button fullWidth>Submit Request</Button>

@@ -1,48 +1,52 @@
-import React, { useState, useEffect } from 'react';
-import { Gift, Check, CreditCard, Loader2 } from 'lucide-react';
-import Button from '../components/Button';
+import React, { useMemo, useState } from 'react';
+import { Check, Loader2 } from 'lucide-react';
 import { loadStripe } from '@stripe/stripe-js';
-import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
+import { Elements, PaymentElement, useElements, useStripe } from '@stripe/react-stripe-js';
+import Button from '../components/Button';
 
-// Initialize Stripe outside of component to avoid recreating it
-// Replace with your actual publishable key
-const stripePromise = loadStripe('pk_test_51O...placeholder'); 
+const stripePublicKey =
+  (typeof window !== 'undefined' &&
+    (window as Window & { __STRIPE_PUBLISHABLE_KEY__?: string }).__STRIPE_PUBLISHABLE_KEY__) ||
+  'pk_test_51O...placeholder';
 
-const CheckoutForm: React.FC<{ 
-  amount: number; 
-  recipientEmail: string; 
-  senderName: string; 
+const stripePromise = loadStripe(stripePublicKey);
+
+const presetAmounts = [50, 100, 200, 300, 500];
+
+const CheckoutForm: React.FC<{
+  amount: number;
+  recipientEmail: string;
+  senderName: string;
   message: string;
   onSuccess: () => void;
 }> = ({ amount, recipientEmail, senderName, message, onSuccess }) => {
   const stripe = useStripe();
   const elements = useElements();
-  const [messageState, setMessageState] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    if (!stripe || !elements) {
-      return;
-    }
+    if (!stripe || !elements) return;
 
     setIsLoading(true);
+    setErrorMessage(null);
 
     const { error, paymentIntent } = await stripe.confirmPayment({
       elements,
       confirmParams: {
-        // Return URL is required but we handle redirect manually or stay on page
-        return_url: window.location.origin + '/gift-cards', 
+        return_url: `${window.location.origin}/gift-cards`,
       },
       redirect: 'if_required',
     });
 
     if (error) {
-      setMessageState(error.message || 'An unexpected error occurred.');
+      setErrorMessage(error.message || 'An unexpected error occurred.');
       setIsLoading(false);
-    } else if (paymentIntent && paymentIntent.status === 'succeeded') {
-      // Payment successful, now send the gift card
+      return;
+    }
+
+    if (paymentIntent?.status === 'succeeded') {
       try {
         await fetch('/api/send-gift-card', {
           method: 'POST',
@@ -52,196 +56,257 @@ const CheckoutForm: React.FC<{
             senderName,
             message,
             amount,
-            code: 'GC-' + Math.random().toString(36).substr(2, 9).toUpperCase() // Mock code generation
+            code: `GC-${Math.random().toString(36).slice(2, 11).toUpperCase()}`,
           }),
         });
         onSuccess();
-      } catch (err) {
-        setMessageState('Payment successful but failed to send email. Please contact support.');
+      } catch {
+        setErrorMessage('Payment succeeded but gift card delivery failed. Please contact support.');
       }
-      setIsLoading(false);
     } else {
-        setMessageState('Payment processing...');
-        setIsLoading(false);
+      setErrorMessage('Payment is still processing. Please wait a moment and retry.');
     }
+
+    setIsLoading(false);
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form onSubmit={handleSubmit} className="space-y-5">
       <PaymentElement />
-      {messageState && <div className="text-red-500 text-xs font-mono">{messageState}</div>}
-      <Button 
-        fullWidth 
-        disabled={isLoading || !stripe || !elements} 
-        className="mt-4 justify-center"
-      >
-        {isLoading ? <Loader2 className="animate-spin w-4 h-4" /> : `Pay $${amount}`}
+      {errorMessage && (
+        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          {errorMessage}
+        </div>
+      )}
+      <Button fullWidth disabled={isLoading || !stripe || !elements}>
+        {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : `Pay $${amount}`}
       </Button>
     </form>
   );
 };
 
 const GiftCards: React.FC = () => {
-  const [selectedAmount, setSelectedAmount] = useState(100);
   const [step, setStep] = useState<'config' | 'payment' | 'success'>('config');
+  const [selectedAmount, setSelectedAmount] = useState(100);
+  const [customAmount, setCustomAmount] = useState('');
+  const [customEnabled, setCustomEnabled] = useState(false);
   const [clientSecret, setClientSecret] = useState('');
-  
+  const [isCreatingPayment, setIsCreatingPayment] = useState(false);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
+
   const [formData, setFormData] = useState({
     recipientEmail: '',
     senderName: '',
-    message: ''
+    message: '',
   });
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    setFormData({ ...formData, [e.target.type === 'email' ? 'recipientEmail' : e.target.type === 'text' && e.target.tagName === 'INPUT' ? 'senderName' : 'message']: e.target.value });
-  };
-  
-  // Specific handler for message textarea to avoid type issues
-  const handleMessageChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-      setFormData({ ...formData, message: e.target.value });
-  };
-  
-  // Specific handler for inputs
-  const handleGenericInputChange = (field: string) => (e: React.ChangeEvent<HTMLInputElement>) => {
-      setFormData({ ...formData, [field]: e.target.value });
-  };
+  const effectiveAmount = useMemo(() => {
+    if (!customEnabled) return selectedAmount;
+    const parsed = Number(customAmount);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }, [customAmount, customEnabled, selectedAmount]);
+
+  const canProceed =
+    formData.recipientEmail.trim().length > 0 &&
+    formData.senderName.trim().length > 0 &&
+    effectiveAmount >= 25;
+
+  const updateField =
+    (field: 'recipientEmail' | 'senderName' | 'message') =>
+    (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+      setFormData((prev) => ({ ...prev, [field]: e.target.value }));
+    };
 
   const initiatePayment = async () => {
-    if (!formData.recipientEmail) return; // Basic validation
+    if (!canProceed || isCreatingPayment) return;
 
-    // Create PaymentIntent on server
-    const res = await fetch('/api/create-payment-intent', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ amount: selectedAmount }),
-    });
-    const data = await res.json();
-    setClientSecret(data.clientSecret);
-    setStep('payment');
+    setIsCreatingPayment(true);
+    setPaymentError(null);
+
+    try {
+      const res = await fetch('/api/create-payment-intent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount: Math.round(effectiveAmount) }),
+      });
+
+      if (!res.ok) {
+        throw new Error('Unable to initialize secure payment.');
+      }
+
+      const data = await res.json();
+      if (!data?.clientSecret) {
+        throw new Error('Payment session is invalid. Please try again.');
+      }
+
+      setClientSecret(data.clientSecret);
+      setStep('payment');
+    } catch (error) {
+      setPaymentError(error instanceof Error ? error.message : 'Something went wrong while starting payment.');
+    } finally {
+      setIsCreatingPayment(false);
+    }
   };
 
   return (
-    <div className="bg-brand-white min-h-screen">
-      {/* Header */}
-      <div className="py-24 border-b border-brand-black px-4">
-         <div className="container mx-auto">
-            <h1 className="text-[12vw] leading-none font-display font-bold uppercase">Gift Cards</h1>
-            <p className="font-mono text-sm uppercase max-w-md mt-8">
-               Digital currency for the automotive connoisseur.
-            </p>
-         </div>
-      </div>
+    <div className="min-h-screen bg-brand-gray">
+      <section className="border-b border-neutral-200 bg-gradient-to-b from-white to-neutral-50 px-4 py-16 md:py-20">
+        <div className="mx-auto max-w-7xl">
+          <span className="inline-block rounded-full bg-orange-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.08em] text-brand-mclaren">
+            Gift Cards
+          </span>
+          <h1 className="mt-5 max-w-4xl font-display text-4xl font-bold uppercase leading-[0.95] text-brand-black md:text-6xl">
+            Send Premium Vehicle Care As A Gift
+          </h1>
+          <p className="mt-6 max-w-3xl text-base leading-relaxed text-gray-600 md:text-lg">
+            Digital gift cards are delivered instantly and can be used for any Spa for Cars service.
+          </p>
+        </div>
+      </section>
 
-      <div className="container mx-auto max-w-6xl py-20 px-4">
-        <div className="grid md:grid-cols-2 gap-12 border border-brand-black p-8 bg-brand-gray shadow-[12px_12px_0px_0px_rgba(0,0,0,1)]">
-          {/* Visual Side */}
-          <div className="flex flex-col justify-between">
-            <div className="relative aspect-[1.6/1] bg-brand-black p-8 flex flex-col justify-between text-white border border-brand-black overflow-hidden group">
-               {/* Card Pattern */}
-               <div className="absolute inset-0 opacity-20 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-gray-700 via-black to-black"></div>
-               
-               <div className="relative z-10 flex justify-between items-start">
-                  <span className="font-display font-bold text-3xl uppercase tracking-tighter">
-                    <span className="text-brand-mclaren">SPA</span> FOR <span className="text-brand-mclaren">CAR</span>
-                  </span>
-                  <span className="font-mono font-bold text-2xl">${selectedAmount}</span>
-               </div>
-               
-               <div className="relative z-10 text-right">
-                  <p className="font-mono text-xs uppercase tracking-widest mb-1">Gift Voucher</p>
-                  <p className="font-mono text-sm">**** **** **** 4293</p>
-               </div>
+      <section className="px-4 py-16 md:py-20">
+        <div className="mx-auto grid max-w-7xl gap-6 lg:grid-cols-2">
+          <aside className="rounded-2xl border border-neutral-200 bg-white p-8 shadow-sm">
+            <div className="relative overflow-hidden rounded-xl bg-brand-black p-6 text-white">
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(255,122,0,0.24),transparent_60%)]" />
+              <div className="relative">
+                <p className="text-xs uppercase tracking-[0.08em] text-neutral-300">Spa for Cars</p>
+                <p className="mt-2 font-display text-3xl font-semibold uppercase">Gift Card</p>
+                <p className="mt-12 text-4xl font-bold">${Math.round(effectiveAmount)}</p>
+                <p className="mt-3 text-sm text-neutral-300">Valid on all detailing and protection services</p>
+              </div>
             </div>
-            
-            <div className="mt-8">
-              <h3 className="font-display font-bold text-xl uppercase mb-4">The Perfect Gift</h3>
-              <ul className="space-y-3">
-                {['Instant digital delivery', 'Valid for all services', 'Never expires', 'The feeling of a brand new car'].map((item, i) => (
-                  <li key={i} className="flex items-center gap-2 font-mono text-xs uppercase">
-                    <Check className="w-4 h-4 text-brand-black" /> {item}
-                  </li>
-                ))}
-              </ul>
+            <div className="mt-8 space-y-3 text-sm text-gray-600">
+              {[
+                'Instant digital delivery by email',
+                'No expiry date',
+                'Redeemable across all services',
+                'Great for enthusiasts and new car owners',
+              ].map((item) => (
+                <div key={item} className="flex items-start gap-2">
+                  <Check className="mt-0.5 h-4 w-4 text-brand-mclaren" />
+                  <span>{item}</span>
+                </div>
+              ))}
             </div>
-          </div>
+          </aside>
 
-          {/* Form Side */}
-          <div className="bg-brand-white border border-brand-black p-8">
+          <div className="rounded-2xl border border-neutral-200 bg-white p-8 shadow-sm">
             {step === 'config' && (
               <>
-                <h2 className="font-display font-bold text-3xl uppercase mb-6">Configure</h2>
-                <div className="space-y-6">
-                  <div>
-                    <label className="block font-mono text-xs uppercase font-bold mb-3">Select Amount</label>
-                    <div className="grid grid-cols-3 gap-2">
-                      {[50, 100, 200, 300, 500].map((amount) => (
-                        <button
-                          key={amount}
-                          onClick={() => setSelectedAmount(amount)}
-                          className={`py-3 border font-mono text-xs font-bold transition-all ${
-                            selectedAmount === amount
-                              ? 'bg-brand-black text-white border-brand-black'
-                              : 'bg-white text-brand-black border-brand-black hover:bg-gray-100'
-                          }`}
-                        >
-                          ${amount}
-                        </button>
-                      ))}
-                      <button className="py-3 border border-brand-black font-mono text-xs font-bold bg-white hover:bg-gray-100">
-                        Custom
+                <h2 className="font-display text-3xl font-semibold uppercase text-brand-black">Configure Gift Card</h2>
+
+                <div className="mt-6">
+                  <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.08em] text-gray-500">
+                    Choose Amount
+                  </label>
+                  <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+                    {presetAmounts.map((amount) => (
+                      <button
+                        key={amount}
+                        type="button"
+                        onClick={() => {
+                          setCustomEnabled(false);
+                          setSelectedAmount(amount);
+                        }}
+                        className={`rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${
+                          !customEnabled && selectedAmount === amount
+                            ? 'border-brand-mclaren bg-orange-50 text-brand-mclaren'
+                            : 'border-neutral-300 bg-white text-gray-700 hover:border-brand-mclaren hover:text-brand-mclaren'
+                        }`}
+                      >
+                        ${amount}
                       </button>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => setCustomEnabled(true)}
+                      className={`rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${
+                        customEnabled
+                          ? 'border-brand-mclaren bg-orange-50 text-brand-mclaren'
+                          : 'border-neutral-300 bg-white text-gray-700 hover:border-brand-mclaren hover:text-brand-mclaren'
+                      }`}
+                    >
+                      Custom
+                    </button>
+                  </div>
+
+                  {customEnabled && (
+                    <div className="mt-3">
+                      <input
+                        type="number"
+                        min={25}
+                        value={customAmount}
+                        onChange={(e) => setCustomAmount(e.target.value)}
+                        placeholder="Minimum $25"
+                        className="w-full rounded-lg border border-neutral-300 bg-white px-4 py-3 text-sm text-brand-black focus:border-brand-mclaren focus:outline-none"
+                      />
                     </div>
-                  </div>
+                  )}
+                </div>
 
-                  <div className="space-y-4">
-                     <div>
-                        <label className="block font-mono text-xs uppercase font-bold mb-2">Recipient Email</label>
-                        <input 
-                          type="email" 
-                          className="w-full border border-brand-black p-3 font-mono text-sm focus:outline-none focus:bg-gray-50 rounded-none" 
-                          placeholder="FRIEND@EXAMPLE.COM"
-                          value={formData.recipientEmail}
-                          onChange={handleGenericInputChange('recipientEmail')}
-                        />
-                     </div>
-                     <div>
-                        <label className="block font-mono text-xs uppercase font-bold mb-2">From</label>
-                        <input 
-                          type="text" 
-                          className="w-full border border-brand-black p-3 font-mono text-sm focus:outline-none focus:bg-gray-50 rounded-none" 
-                          placeholder="YOUR NAME"
-                          value={formData.senderName}
-                          onChange={handleGenericInputChange('senderName')}
-                        />
-                     </div>
-                     <div>
-                        <label className="block font-mono text-xs uppercase font-bold mb-2">Message</label>
-                        <textarea 
-                          className="w-full border border-brand-black p-3 font-mono text-sm focus:outline-none focus:bg-gray-50 h-24 rounded-none" 
-                          placeholder="ENJOY THE SHINE!"
-                          value={formData.message}
-                          onChange={handleMessageChange}
-                        ></textarea>
-                     </div>
+                <div className="mt-6 space-y-4">
+                  <div>
+                    <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.08em] text-gray-500">Recipient Email</label>
+                    <input
+                      type="email"
+                      value={formData.recipientEmail}
+                      onChange={updateField('recipientEmail')}
+                      placeholder="friend@example.com"
+                      className="w-full rounded-lg border border-neutral-300 bg-white px-4 py-3 text-sm text-brand-black focus:border-brand-mclaren focus:outline-none"
+                    />
                   </div>
+                  <div>
+                    <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.08em] text-gray-500">From</label>
+                    <input
+                      type="text"
+                      value={formData.senderName}
+                      onChange={updateField('senderName')}
+                      placeholder="Your Name"
+                      className="w-full rounded-lg border border-neutral-300 bg-white px-4 py-3 text-sm text-brand-black focus:border-brand-mclaren focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.08em] text-gray-500">Message</label>
+                    <textarea
+                      value={formData.message}
+                      onChange={updateField('message')}
+                      placeholder="Enjoy your detail."
+                      className="h-24 w-full rounded-lg border border-neutral-300 bg-white px-4 py-3 text-sm text-brand-black focus:border-brand-mclaren focus:outline-none"
+                    />
+                  </div>
+                </div>
 
-                  <Button fullWidth className="mt-4" icon onClick={initiatePayment}>
-                    Proceed to Payment
+                {paymentError && (
+                  <div className="mt-5 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                    {paymentError}
+                  </div>
+                )}
+
+                <div className="mt-6">
+                  <Button onClick={initiatePayment} disabled={!canProceed || isCreatingPayment} fullWidth icon>
+                    {isCreatingPayment ? 'Preparing Payment...' : 'Proceed To Payment'}
                   </Button>
-                  <p className="text-center font-mono text-[10px] uppercase text-gray-500 mt-4">Secure payment processed by Stripe.</p>
+                  <p className="mt-3 text-center text-xs text-gray-500">Secure checkout powered by Stripe.</p>
                 </div>
               </>
             )}
 
             {step === 'payment' && clientSecret && (
               <>
-                <div className="flex items-center justify-between mb-6">
-                  <h2 className="font-display font-bold text-3xl uppercase">Payment</h2>
-                  <button onClick={() => setStep('config')} className="text-xs font-mono underline">Back</button>
+                <div className="mb-6 flex items-center justify-between">
+                  <h2 className="font-display text-3xl font-semibold uppercase text-brand-black">Secure Payment</h2>
+                  <button
+                    type="button"
+                    onClick={() => setStep('config')}
+                    className="text-sm font-medium text-gray-500 transition-colors hover:text-brand-mclaren"
+                  >
+                    Back
+                  </button>
                 </div>
                 <Elements stripe={stripePromise} options={{ clientSecret, appearance: { theme: 'stripe' } }}>
-                  <CheckoutForm 
-                    amount={selectedAmount}
+                  <CheckoutForm
+                    amount={Math.round(effectiveAmount)}
                     recipientEmail={formData.recipientEmail}
                     senderName={formData.senderName}
                     message={formData.message}
@@ -252,25 +317,33 @@ const GiftCards: React.FC = () => {
             )}
 
             {step === 'success' && (
-              <div className="text-center py-12 animate-fade-in">
-                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                  <Check className="w-8 h-8 text-green-600" />
+              <div className="animate-fade-in py-10 text-center">
+                <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
+                  <Check className="h-8 w-8" />
                 </div>
-                <h2 className="font-display font-bold text-3xl uppercase mb-4">Purchase Complete</h2>
-                <p className="font-mono text-sm text-gray-600 mb-8">
+                <h2 className="mt-6 font-display text-3xl font-semibold uppercase text-brand-black">Purchase Complete</h2>
+                <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-gray-600">
                   Your gift card has been sent to {formData.recipientEmail}.
                 </p>
-                <Button onClick={() => {
-                  setStep('config');
-                  setFormData({ recipientEmail: '', senderName: '', message: '' });
-                }}>
-                  Send Another
-                </Button>
+                <div className="mt-8">
+                  <Button
+                    onClick={() => {
+                      setStep('config');
+                      setClientSecret('');
+                      setCustomEnabled(false);
+                      setCustomAmount('');
+                      setSelectedAmount(100);
+                      setFormData({ recipientEmail: '', senderName: '', message: '' });
+                    }}
+                  >
+                    Send Another Gift Card
+                  </Button>
+                </div>
               </div>
             )}
           </div>
         </div>
-      </div>
+      </section>
     </div>
   );
 };

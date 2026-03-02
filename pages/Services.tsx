@@ -1,11 +1,17 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { Clock3, ShieldCheck, Sparkles } from 'lucide-react';
 import Button from '../components/Button';
 import { Service } from '../types';
-import { ArrowDown } from 'lucide-react';
 
 const Services: React.FC = () => {
-  const services: Service[] = [
+  type ServiceWithDetails = Service & {
+    idealFor: string;
+    process: string;
+    notes: string;
+  };
+
+  const services: ServiceWithDetails[] = [
     {
       id: '1',
       title: 'The Refresh',
@@ -14,104 +20,145 @@ const Services: React.FC = () => {
       price: '$95+',
       duration: '1.5 Hours',
       features: ['Foam Hand Wash', 'Wheel Cleaning', 'Vacuum & Wipe Down', 'Tire Dressing', 'Spray Wax'],
-      image: '/client-images/IMG_2414.PNG'
+      image: '/client-images/IMG_2414.PNG',
+      idealFor: 'Weekly or bi-weekly maintenance on daily-driven vehicles.',
+      process: 'Safe foam pre-wash, contact wash, wheel/tire cleaning, interior vacuum, and final gloss finish.',
+      notes: 'Best kept on a 2-4 week schedule for a consistently clean car.',
     },
     {
       id: '2',
       title: 'Signature Detail',
-      description: 'Our most popular package. Complete interior deep clean and exterior gloss enhancement.',
+      description: 'Complete interior deep clean and exterior gloss enhancement for a near-showroom finish.',
       category: 'Detailing',
       price: '$295+',
       duration: '4 Hours',
       features: ['Everything in Refresh', 'Clay Bar Treatment', 'Machine Polish', 'Leather Conditioning', 'Steam Clean', '6-Month Sealant'],
-      image: '/client-images/IMG_2461.PNG'
+      image: '/client-images/IMG_2461.PNG',
+      idealFor: 'Vehicles that need a seasonal reset or pre-sale refresh.',
+      process: 'Deep interior steam treatment, decontamination wash, paint gloss enhancement, and protective sealant.',
+      notes: 'Recommended every 4-6 months depending on usage and storage conditions.',
     },
     {
       id: '3',
       title: 'Ceramic Coating',
-      description: 'The ultimate protection for your paint. Hardens to form a glass-like shield.',
+      description: 'Long-lasting paint protection that delivers deep gloss, easier washing, and hydrophobic defense.',
       category: 'Protection',
       price: '$800+',
       duration: '1 Day',
       features: ['3-Year Warranty', 'Paint Correction', 'Extreme Hydrophobicity', 'UV Protection', 'Self-Cleaning'],
-      image: '/client-images/IMG_2449.PNG'
+      image: '/client-images/IMG_2449.PNG',
+      idealFor: 'Owners looking for long-term paint protection and easier maintenance.',
+      process: 'Multi-stage prep and correction, panel wipe-down, precision coating installation, and cure inspection.',
+      notes: 'Follow-up maintenance wash is recommended every 4-6 weeks.',
     },
     {
       id: '4',
-      title: 'PPF Front',
-      description: 'Invisible physical protection against rock chips and road debris.',
+      title: 'PPF Front Package',
+      description: 'Invisible physical protection against rock chips and road debris for high-impact front surfaces.',
       category: 'Protection',
       price: '$1,800+',
       duration: '2 Days',
       features: ['10-Year Warranty', 'Self-Healing Film', 'Covers Bumper/Hood', 'Invisible Edges', 'Stain Resistant'],
-      image: '/client-images/IMG_2421_after.PNG'
-    }
+      image: '/client-images/IMG_2421_after.PNG',
+      idealFor: 'New vehicles, highway drivers, and performance cars prone to stone chips.',
+      process: 'Precision template prep, edge wrapping, contaminant control, and final post-install inspection.',
+      notes: 'Pairs best with ceramic coating for full exterior protection.',
+    },
   ];
 
   return (
-    <div className="bg-brand-white">
-      {/* Page Header */}
-      <div className="py-24 border-b border-brand-black px-4">
-         <div className="container mx-auto">
-            <h1 className="text-[12vw] leading-none font-display font-bold uppercase">Services</h1>
-            <div className="flex justify-between items-end mt-8">
-               <p className="font-mono text-sm uppercase max-w-md">
-                 Curated treatments for the discerning owner. <br/> Select a package below to view details.
-               </p>
-               <ArrowDown className="w-8 h-8 animate-bounce hidden md:block" />
-            </div>
-         </div>
-      </div>
+    <div className="min-h-screen bg-brand-gray">
+      <section className="border-b border-neutral-200 bg-gradient-to-b from-white to-neutral-50 px-4 py-16 md:py-20">
+        <div className="mx-auto max-w-7xl">
+          <span className="inline-block rounded-full bg-orange-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.08em] text-brand-mclaren">
+            Service Menu
+          </span>
+          <h1 className="mt-5 max-w-4xl font-display text-4xl font-bold uppercase leading-[0.95] text-brand-black md:text-6xl">
+            Professional Detailing Packages Built For Real Results
+          </h1>
+          <p className="mt-6 max-w-3xl text-base leading-relaxed text-gray-600 md:text-lg">
+            Every package is built with premium products, disciplined process, and clear deliverables so you know exactly what your vehicle receives.
+          </p>
+        </div>
+      </section>
 
-      {/* Filter Bar */}
-      <div className="border-b border-brand-black flex overflow-x-auto">
-         {['All', 'Detailing', 'Protection', 'Restoration'].map((f, i) => (
-           <button key={f} className={`px-8 py-4 border-r border-brand-black font-mono text-xs uppercase hover:bg-brand-black hover:text-white transition-colors whitespace-nowrap ${i === 0 ? 'bg-brand-black text-white' : ''}`}>
-             {f}
-           </button>
-         ))}
-      </div>
+      <section className="px-4 py-16 md:py-20">
+        <div className="mx-auto grid max-w-7xl gap-6 grid-cols-1">
+          {services.map((service) => (
+            <article
+              key={service.id}
+              className="overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm transition-shadow duration-300 hover:shadow-lg"
+            >
+              <div className="grid grid-cols-1 lg:grid-cols-[420px_1fr]">
+                <div className="relative aspect-[16/10] overflow-hidden lg:aspect-auto lg:h-full">
+                  <img
+                    src={service.image}
+                    alt={service.title}
+                    className="h-full w-full object-cover transition-transform duration-500 hover:scale-105"
+                  />
+                  <div className="absolute left-4 top-4 rounded-md bg-brand-black/90 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-white">
+                    {service.category}
+                  </div>
+                </div>
 
-      {/* Services Grid */}
-      <div className="grid grid-cols-1">
-        {services.map((service, index) => (
-          <div key={service.id} className="grid grid-cols-1 md:grid-cols-2 border-b border-brand-black min-h-[50vh] group">
-            {/* Image Side - Alternate sides */}
-            <div className={`relative overflow-hidden border-b md:border-b-0 md:border-r border-brand-black ${index % 2 !== 0 ? 'md:order-2 md:border-r-0 md:border-l' : ''}`}>
-              <img src={service.image} alt={service.title} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105 saturate-0 group-hover:saturate-100" />
-              <div className="absolute top-0 left-0 bg-brand-white border-b border-r border-brand-black px-4 py-2 font-mono text-xs uppercase">
-                 {service.category}
+                <div className="space-y-6 p-6 md:p-8">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <h2 className="font-display text-3xl font-semibold uppercase leading-tight text-brand-black">
+                        {service.title}
+                      </h2>
+                      <p className="mt-3 max-w-2xl text-sm leading-relaxed text-gray-600">{service.description}</p>
+                    </div>
+                    <span className="shrink-0 rounded-md bg-orange-50 px-3 py-1 text-sm font-semibold text-brand-mclaren">
+                      {service.price}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                    <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.08em] text-gray-500">Ideal For</p>
+                      <p className="mt-2 text-sm leading-relaxed text-gray-700">{service.idealFor}</p>
+                    </div>
+                    <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.08em] text-gray-500">Process</p>
+                      <p className="mt-2 text-sm leading-relaxed text-gray-700">{service.process}</p>
+                    </div>
+                    <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.08em] text-gray-500">Service Notes</p>
+                      <p className="mt-2 text-sm leading-relaxed text-gray-700">{service.notes}</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    {service.features.map((feature) => (
+                      <div key={feature} className="flex items-start gap-2 text-sm text-gray-600">
+                        <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-brand-mclaren" />
+                        <span>{feature}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-between gap-4 border-t border-neutral-200 pt-4">
+                    <div className="flex flex-wrap items-center gap-4">
+                      <span className="inline-flex items-center gap-2 text-sm font-medium text-gray-600">
+                        <Clock3 className="h-4 w-4 text-brand-mclaren" />
+                        Estimated time: {service.duration}
+                      </span>
+                      <span className="inline-flex items-center gap-2 text-sm font-medium text-gray-600">
+                        <Sparkles className="h-4 w-4 text-brand-mclaren" />
+                        Premium-grade products included
+                      </span>
+                    </div>
+                    <Link to={`/booking?service=${service.id}`}>
+                      <Button icon>Book Now</Button>
+                    </Link>
+                  </div>
+                </div>
               </div>
-            </div>
-
-            {/* Content Side */}
-            <div className={`p-8 md:p-16 flex flex-col justify-between ${index % 2 !== 0 ? 'md:order-1' : ''}`}>
-               <div>
-                  <div className="flex justify-between items-start mb-6">
-                     <h2 className="font-display font-bold text-4xl uppercase leading-none">{service.title}</h2>
-                     <span className="font-mono text-xl">{service.price}</span>
-                  </div>
-                  <p className="font-sans text-lg mb-8 max-w-md">{service.description}</p>
-                  
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-2 mb-8">
-                     {service.features.map((feat, i) => (
-                       <div key={i} className="flex items-start gap-2 font-mono text-xs text-gray-600 uppercase">
-                         <span>+</span> {feat}
-                       </div>
-                     ))}
-                  </div>
-               </div>
-               
-               <div className="flex items-center justify-between mt-8 pt-8 border-t border-gray-200">
-                  <span className="font-mono text-xs uppercase text-gray-500">Duration: {service.duration}</span>
-                  <Link to={`/booking?service=${service.id}`}>
-                    <Button>Book Now</Button>
-                  </Link>
-               </div>
-            </div>
-          </div>
-        ))}
-      </div>
+            </article>
+          ))}
+        </div>
+      </section>
     </div>
   );
 };

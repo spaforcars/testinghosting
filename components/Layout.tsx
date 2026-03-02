@@ -1,61 +1,97 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Menu, X, Phone, Mail, ArrowUpRight } from 'lucide-react';
+import { Menu, X, Phone, Mail, Clock, ArrowUpRight } from 'lucide-react';
 
 const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const location = useLocation();
 
-  const navLinks = [
+  const primaryLinks = [
     { name: 'Home', path: '/' },
-    { name: 'About', path: '/about' },
     { name: 'Services', path: '/services' },
+    { name: 'Pricing', path: '/pricing' },
     { name: 'Showcase', path: '/gallery' },
-    { name: 'Contact Us', path: '/contact' },
-    { name: 'Repair', path: '/auto-repair' },
+    { name: 'Fleet', path: '/fleet' },
+    { name: 'About', path: '/about' },
+    { name: 'Contact', path: '/contact' },
   ];
 
+  const secondaryLinks = [
+    { name: 'FAQ', path: '/faq' },
+    { name: 'Gift Cards', path: '/gift-cards' },
+    { name: 'Auto Repair', path: '/auto-repair' },
+  ];
+
+  const isActive = (path: string) =>
+    path === '/' ? location.pathname === '/' : location.pathname.startsWith(path);
+
+  useEffect(() => {
+    setIsMobileMenuOpen(false);
+  }, [location.pathname]);
+
   return (
-    <div className="min-h-screen flex flex-col bg-white">
-      {/* Top Info Bar */}
-      <div className="bg-neutral-900 text-white py-2 z-50">
-        <div className="max-w-7xl mx-auto px-4 flex justify-between items-center">
-          <div className="flex items-center gap-6">
-            <a href="mailto:info@spaforcars.ca" className="flex items-center gap-2 text-xs text-gray-300 hover:text-white transition-colors">
-              <Mail className="w-3 h-3" /> info@spaforcars.ca
+    <div className="min-h-screen bg-brand-gray text-brand-black">
+      <div className="border-b border-neutral-800 bg-neutral-950 text-neutral-200">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-2.5 text-xs">
+          <div className="flex flex-wrap items-center gap-4">
+            <span className="inline-flex items-center gap-1.5 text-neutral-300">
+              <Clock className="h-3.5 w-3.5" />
+              Mon-Sat 8:00 AM - 6:00 PM
+            </span>
+            <a
+              href="mailto:info@spaforcars.ca"
+              className="inline-flex items-center gap-1.5 text-neutral-300 transition-colors hover:text-white"
+            >
+              <Mail className="h-3.5 w-3.5" />
+              info@spaforcars.ca
             </a>
-            <a href="tel:4169864746" className="flex items-center gap-2 text-xs text-gray-300 hover:text-white transition-colors">
-              <Phone className="w-3 h-3" /> (416) 986-4746
+            <a
+              href="tel:4169864746"
+              className="inline-flex items-center gap-1.5 text-neutral-300 transition-colors hover:text-white"
+            >
+              <Phone className="h-3.5 w-3.5" />
+              (416) 986-4746
             </a>
           </div>
-          <div className="hidden md:flex items-center gap-4">
-            <a href="#" className="text-xs text-gray-300 hover:text-white transition-colors">Instagram</a>
-            <a href="#" className="text-xs text-gray-300 hover:text-white transition-colors">TikTok</a>
+          <div className="hidden items-center gap-4 md:flex">
+            <a
+              href="https://www.instagram.com"
+              target="_blank"
+              rel="noreferrer"
+              className="text-neutral-300 transition-colors hover:text-white"
+            >
+              Instagram
+            </a>
+            <a
+              href="https://www.tiktok.com"
+              target="_blank"
+              rel="noreferrer"
+              className="text-neutral-300 transition-colors hover:text-white"
+            >
+              TikTok
+            </a>
           </div>
         </div>
       </div>
 
-      {/* Main Navigation */}
-      <header className="sticky top-0 z-40 bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 flex justify-between items-center h-16 md:h-20">
-          {/* Logo */}
-          <Link to="/" className="flex items-center">
-            <span className="font-display font-bold text-2xl md:text-3xl tracking-tight">
-              <span className="text-brand-mclaren">SPA</span>{' '}
+      <header className="sticky top-0 z-40 border-b border-neutral-200 bg-white/95 backdrop-blur">
+        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 lg:h-20">
+          <Link to="/" className="group">
+            <span className="font-display text-2xl font-bold tracking-tight md:text-3xl">
+              <span className="text-brand-mclaren transition-colors group-hover:text-orange-600">SPA</span>{' '}
               <span className="text-neutral-900">FOR</span>{' '}
-              <span className="text-brand-mclaren">CARS</span>
+              <span className="text-brand-mclaren transition-colors group-hover:text-orange-600">CARS</span>
             </span>
           </Link>
 
-          {/* Desktop Nav */}
-          <nav className="hidden lg:flex items-center gap-1">
-            {navLinks.map((link) => (
+          <nav className="hidden items-center gap-1 lg:flex">
+            {primaryLinks.map((link) => (
               <Link
                 key={link.path}
                 to={link.path}
-                className={`px-4 py-2 text-sm font-medium uppercase tracking-wide transition-colors rounded ${
-                  location.pathname === link.path
-                    ? 'text-brand-mclaren'
+                className={`rounded-md px-3 py-2 text-sm font-semibold uppercase tracking-[0.08em] transition-colors ${
+                  isActive(link.path)
+                    ? 'bg-orange-50 text-brand-mclaren'
                     : 'text-neutral-700 hover:text-brand-mclaren'
                 }`}
               >
@@ -64,107 +100,134 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             ))}
             <Link
               to="/booking"
-              className="ml-4 px-6 py-2.5 bg-neutral-900 text-white text-sm font-semibold uppercase tracking-wide rounded hover:bg-brand-mclaren transition-colors"
+              className="ml-3 rounded-lg bg-brand-mclaren px-5 py-2.5 text-sm font-semibold uppercase tracking-[0.08em] text-white transition-colors hover:bg-orange-600"
             >
               Book Now
             </Link>
           </nav>
 
-          {/* Mobile Toggle */}
           <button
-            className="lg:hidden p-2 text-neutral-900"
-            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            className="rounded-md p-2 text-neutral-900 transition-colors hover:bg-neutral-100 lg:hidden"
+            aria-label="Toggle menu"
+            onClick={() => setIsMobileMenuOpen((prev) => !prev)}
           >
-            {isMobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+            {isMobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
           </button>
         </div>
 
-        {/* Mobile Menu */}
         {isMobileMenuOpen && (
-          <div className="lg:hidden bg-white border-t border-gray-100 shadow-lg">
-            <div className="max-w-7xl mx-auto px-4 py-4 space-y-1">
-              {navLinks.map((link) => (
+          <div className="border-t border-neutral-200 bg-white lg:hidden">
+            <div className="mx-auto max-w-7xl space-y-1 px-4 py-4">
+              {primaryLinks.map((link) => (
                 <Link
                   key={link.path}
                   to={link.path}
-                  onClick={() => setIsMobileMenuOpen(false)}
-                  className={`block px-4 py-3 text-base font-medium uppercase tracking-wide rounded transition-colors ${
-                    location.pathname === link.path
-                      ? 'text-brand-mclaren bg-orange-50'
-                      : 'text-neutral-700 hover:text-brand-mclaren hover:bg-gray-50'
+                  className={`block rounded-md px-4 py-3 text-sm font-semibold uppercase tracking-[0.08em] transition-colors ${
+                    isActive(link.path)
+                      ? 'bg-orange-50 text-brand-mclaren'
+                      : 'text-neutral-700 hover:bg-neutral-50 hover:text-brand-mclaren'
                   }`}
+                >
+                  {link.name}
+                </Link>
+              ))}
+              <div className="my-3 border-t border-neutral-200" />
+              {secondaryLinks.map((link) => (
+                <Link
+                  key={link.path}
+                  to={link.path}
+                  className="block rounded-md px-4 py-3 text-sm font-medium uppercase tracking-[0.08em] text-neutral-700 transition-colors hover:bg-neutral-50 hover:text-brand-mclaren"
                 >
                   {link.name}
                 </Link>
               ))}
               <Link
                 to="/booking"
-                onClick={() => setIsMobileMenuOpen(false)}
-                className="block px-4 py-3 mt-2 bg-neutral-900 text-white text-base font-semibold uppercase tracking-wide rounded text-center hover:bg-brand-mclaren transition-colors"
+                className="mt-2 block rounded-lg bg-brand-mclaren px-4 py-3 text-center text-sm font-semibold uppercase tracking-[0.08em] text-white transition-colors hover:bg-orange-600"
               >
-                Book Now
+                Book Appointment
               </Link>
             </div>
           </div>
         )}
       </header>
 
-      {/* Main Content */}
-      <main className="flex-grow">{children}</main>
+      <main className="flex-1">{children}</main>
 
-      {/* Footer */}
-      <footer className="bg-neutral-900 text-white">
-        <div className="max-w-7xl mx-auto px-4 py-16">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-12">
-            <div>
-              <span className="font-display font-bold text-2xl block mb-4">
-                <span className="text-brand-mclaren">SPA</span> FOR <span className="text-brand-mclaren">CARS</span>
-              </span>
-              <p className="text-sm text-gray-400 leading-relaxed">
-                Premium automotive detailing studio focused on ceramic coating, paint correction, and full vehicle restoration.
-              </p>
-            </div>
-            <div>
-              <h4 className="font-display font-semibold text-base uppercase tracking-wide mb-4">Quick Links</h4>
-              <ul className="space-y-2">
-                {navLinks.map((link) => (
-                  <li key={link.path}>
-                    <Link to={link.path} className="text-sm text-gray-400 hover:text-brand-mclaren transition-colors">
-                      {link.name}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <div>
-              <h4 className="font-display font-semibold text-base uppercase tracking-wide mb-4">Contact</h4>
-              <ul className="space-y-2 text-sm text-gray-400">
-                <li>Aurora, Ontario</li>
-                <li>
-                  <a href="mailto:info@spaforcars.ca" className="hover:text-brand-mclaren transition-colors">info@spaforcars.ca</a>
+      <footer className="mt-20 bg-neutral-950 text-white">
+        <div className="mx-auto grid max-w-7xl grid-cols-1 gap-10 px-4 py-14 md:grid-cols-4">
+          <div>
+            <span className="mb-4 block font-display text-2xl font-bold">
+              <span className="text-brand-mclaren">SPA</span> FOR{' '}
+              <span className="text-brand-mclaren">CARS</span>
+            </span>
+            <p className="max-w-xs text-sm leading-relaxed text-neutral-400">
+              Premium detailing and paint protection studio serving Aurora and the greater Toronto area.
+            </p>
+          </div>
+          <div>
+            <h4 className="mb-4 text-sm font-semibold uppercase tracking-[0.08em] text-neutral-200">Navigation</h4>
+            <ul className="space-y-2">
+              {primaryLinks.map((link) => (
+                <li key={link.path}>
+                  <Link to={link.path} className="text-sm text-neutral-400 transition-colors hover:text-brand-mclaren">
+                    {link.name}
+                  </Link>
                 </li>
-                <li>
-                  <a href="tel:4169864746" className="hover:text-brand-mclaren transition-colors">(416) 986-4746</a>
+              ))}
+            </ul>
+          </div>
+          <div>
+            <h4 className="mb-4 text-sm font-semibold uppercase tracking-[0.08em] text-neutral-200">More</h4>
+            <ul className="space-y-2">
+              {secondaryLinks.map((link) => (
+                <li key={link.path}>
+                  <Link to={link.path} className="text-sm text-neutral-400 transition-colors hover:text-brand-mclaren">
+                    {link.name}
+                  </Link>
                 </li>
-              </ul>
-            </div>
-            <div>
-              <h4 className="font-display font-semibold text-base uppercase tracking-wide mb-4">Follow Us</h4>
-              <div className="flex gap-4">
-                <a href="#" className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-brand-mclaren transition-colors">
-                  Instagram <ArrowUpRight className="w-3 h-3" />
+              ))}
+            </ul>
+          </div>
+          <div>
+            <h4 className="mb-4 text-sm font-semibold uppercase tracking-[0.08em] text-neutral-200">Contact</h4>
+            <div className="space-y-2 text-sm text-neutral-400">
+              <p>Aurora, Ontario</p>
+              <p>
+                <a href="mailto:info@spaforcars.ca" className="transition-colors hover:text-brand-mclaren">
+                  info@spaforcars.ca
                 </a>
-                <a href="#" className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-brand-mclaren transition-colors">
-                  TikTok <ArrowUpRight className="w-3 h-3" />
+              </p>
+              <p>
+                <a href="tel:4169864746" className="transition-colors hover:text-brand-mclaren">
+                  (416) 986-4746
+                </a>
+              </p>
+              <div className="flex gap-4 pt-2">
+                <a
+                  href="https://www.instagram.com"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 transition-colors hover:text-brand-mclaren"
+                >
+                  Instagram <ArrowUpRight className="h-3.5 w-3.5" />
+                </a>
+                <a
+                  href="https://www.tiktok.com"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 transition-colors hover:text-brand-mclaren"
+                >
+                  TikTok <ArrowUpRight className="h-3.5 w-3.5" />
                 </a>
               </div>
             </div>
           </div>
         </div>
         <div className="border-t border-neutral-800">
-          <div className="max-w-7xl mx-auto px-4 py-4 flex flex-col md:flex-row justify-between items-center text-xs text-gray-500">
-            <span>© 2025 Spa for Cars Inc. All rights reserved.</span>
-            <span>Powered by Branditecture</span>
+          <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-2 px-4 py-4 text-xs text-neutral-500 md:flex-row">
+            <span>&copy; {new Date().getFullYear()} Spa for Cars Inc. All rights reserved.</span>
+            <span>Designed for premium automotive care</span>
           </div>
         </div>
       </footer>

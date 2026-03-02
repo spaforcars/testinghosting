@@ -1,69 +1,68 @@
 import React from 'react';
 import BeforeAfterSlider from '../components/BeforeAfterSlider';
-import { ArrowDown } from 'lucide-react';
 
 const Gallery: React.FC = () => {
   const transformations = [
-    { 
-      label: "Paint Correction",
-      before: "/client-images/IMG_2414.PNG",
-      after: "/client-images/IMG_2415.PNG" 
+    {
+      label: 'Paint Correction',
+      before: '/client-images/IMG_2414.PNG',
+      after: '/client-images/IMG_2415.PNG',
     },
-    { 
-      label: "Interior Restoration", 
-      before: "/client-images/IMG_2460_before.PNG",
-      after: "/client-images/IMG_2460_after.PNG" 
+    {
+      label: 'Interior Restoration',
+      before: '/client-images/IMG_2460_before.PNG',
+      after: '/client-images/IMG_2460_after.PNG',
     },
-    { 
-      label: "Steering Restoration", 
-      before: "/client-images/IMG_2439_before.PNG",
-      after: "/client-images/IMG_2439_after.PNG" 
+    {
+      label: 'Steering Restoration',
+      before: '/client-images/IMG_2439_before.PNG',
+      after: '/client-images/IMG_2439_after.PNG',
     },
-    { 
-      label: "Leather Seat Restoration", 
-      before: "/client-images/IMG_2445_before.PNG", 
-      after: "/client-images/IMG_2445_after.PNG" 
+    {
+      label: 'Leather Seat Restoration',
+      before: '/client-images/IMG_2445_before.PNG',
+      after: '/client-images/IMG_2445_after.PNG',
     },
-    { 
-      label: "Trim Refinement", 
-      before: "/client-images/IMG_2421_before.PNG", 
-      after: "/client-images/IMG_2421_after.PNG" 
+    {
+      label: 'Trim Refinement',
+      before: '/client-images/IMG_2421_before.PNG',
+      after: '/client-images/IMG_2421_after.PNG',
     },
-    { 
-      label: "Panel Correction", 
-      before: "/client-images/IMG_2418_before.PNG", 
-      after: "/client-images/IMG_2418_after.PNG" 
+    {
+      label: 'Panel Correction',
+      before: '/client-images/IMG_2418_before.PNG',
+      after: '/client-images/IMG_2418_after.PNG',
     },
   ];
 
   return (
-    <div className="bg-brand-white min-h-screen">
-      <div className="py-24 border-b border-brand-black px-4">
-        <div className="container mx-auto">
-           <h1 className="text-[12vw] leading-none font-display font-bold uppercase">Results</h1>
-           <div className="flex justify-between items-end mt-8">
-              <p className="font-mono text-sm uppercase max-w-md">
-                Evidence of execution. <br/> Drag the slider to reveal the transformation.
-              </p>
-              <ArrowDown className="w-8 h-8 animate-bounce hidden md:block" />
-           </div>
+    <div className="min-h-screen bg-brand-gray">
+      <section className="border-b border-neutral-200 bg-gradient-to-b from-white to-neutral-50 px-4 py-16 md:py-20">
+        <div className="mx-auto max-w-7xl">
+          <span className="inline-block rounded-full bg-orange-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.08em] text-brand-mclaren">
+            Real Results
+          </span>
+          <h1 className="mt-5 max-w-4xl font-display text-4xl font-bold uppercase leading-[0.95] text-brand-black md:text-6xl">
+            Before And After Transformations
+          </h1>
+          <p className="mt-6 max-w-3xl text-base leading-relaxed text-gray-600 md:text-lg">
+            Drag each slider to compare real customer vehicles before and after service.
+          </p>
         </div>
-      </div>
+      </section>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 border-b border-brand-black bg-brand-black border-l">
-        {transformations.map((item, i) => (
-          <BeforeAfterSlider 
-            key={i}
-            beforeImage={item.before}
-            afterImage={item.after}
-            label={item.label}
-          />
-        ))}
-      </div>
-      
-      <div className="p-24 text-center">
-        <p className="font-display font-bold text-4xl uppercase mb-4">Your car could be next.</p>
-      </div>
+      <section className="px-4 py-16 md:py-20">
+        <div className="mx-auto grid max-w-7xl grid-cols-1 gap-6 md:grid-cols-2">
+          {transformations.map((item, i) => (
+            <BeforeAfterSlider
+              key={`${item.label}-${i}`}
+              beforeImage={item.before}
+              afterImage={item.after}
+              label={item.label}
+            />
+          ))}
+        </div>
+      </section>
     </div>
   );
 };

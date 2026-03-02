@@ -1,64 +1,71 @@
 import React from 'react';
-import { Award, Users, Heart } from 'lucide-react';
+import { Award, Heart, Users } from 'lucide-react';
 
 const About: React.FC = () => {
   return (
-    <div className="bg-brand-white">
-      <div className="py-24 px-4 border-b border-brand-black bg-brand-gray">
-         <div className="container mx-auto px-4 text-center max-w-4xl">
-           <h1 className="text-[10vw] leading-none font-display font-bold uppercase mb-8">More Than<br/>Just a Wash.</h1>
-           <p className="font-mono text-sm md:text-base max-w-2xl mx-auto leading-relaxed">
-             We founded <strong>Spa for Cars</strong> with a simple mission: to treat every vehicle like a masterpiece. 
-             What started as a passion project in a small garage has evolved into the city's premier automotive sanctuary.
-           </p>
-         </div>
-      </div>
+    <div className="min-h-screen bg-brand-gray">
+      <section className="border-b border-neutral-200 bg-gradient-to-b from-white to-neutral-50 px-4 py-16 md:py-20">
+        <div className="mx-auto max-w-7xl">
+          <span className="inline-block rounded-full bg-orange-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.08em] text-brand-mclaren">
+            Our Story
+          </span>
+          <h1 className="mt-5 max-w-4xl font-display text-4xl font-bold uppercase leading-[0.95] text-brand-black md:text-6xl">
+            More Than Just A Wash
+          </h1>
+          <p className="mt-6 max-w-3xl text-base leading-relaxed text-gray-600 md:text-lg">
+            Spa for Cars was founded to give every vehicle the same level of detail and care usually reserved for showroom exotics.
+          </p>
+        </div>
+      </section>
 
-      <div className="container mx-auto px-4 py-24">
-        <div className="grid md:grid-cols-2 gap-16 items-start">
-          <div className="relative">
-            <div className="border border-brand-black p-2">
-              <img 
-                src="/client-images/IMG_2417.PNG" 
-                alt="Detailing Team" 
-                className="w-full h-auto grayscale hover:grayscale-0 transition-all duration-500"
-              />
-            </div>
-            <div className="absolute -bottom-4 -right-4 bg-brand-black text-white px-4 py-2 font-mono text-xs font-bold uppercase">
-               Est. 2018
+      <section className="px-4 py-16 md:py-20">
+        <div className="mx-auto grid max-w-7xl gap-10 lg:grid-cols-2">
+          <div className="relative overflow-hidden rounded-2xl border border-neutral-200 bg-white p-3 shadow-sm">
+            <img
+              src="/client-images/IMG_2417.PNG"
+              alt="Spa for Cars detailing team"
+              className="h-full w-full rounded-xl object-cover"
+            />
+            <div className="absolute bottom-8 right-8 rounded-md bg-brand-black/90 px-4 py-2 text-xs font-semibold uppercase tracking-[0.08em] text-white">
+              Est. 2018
             </div>
           </div>
-          
-          <div className="space-y-12">
-            <div>
-              <h2 className="font-display font-bold text-4xl uppercase mb-6">The Evolution</h2>
-              <p className="font-sans text-lg leading-relaxed">
-                Formerly "Quick Shine Auto", we realized our level of care went far beyond a quick shine. 
-                We were performing surgery on paint, therapy on leather, and restoration on wheels. 
-                The name <strong>Spa for Cars</strong> reflects the commitment to therapeutic rejuvenation for your vehicle.
+
+          <div className="space-y-8">
+            <div className="rounded-2xl border border-neutral-200 bg-white p-8 shadow-sm">
+              <h2 className="font-display text-3xl font-bold uppercase text-brand-black md:text-4xl">The Evolution</h2>
+              <p className="mt-4 text-base leading-relaxed text-gray-600">
+                Formerly known as Quick Shine Auto, we grew into a process-driven studio focused on lasting protection, not quick cosmetics.
+                The name <strong>Spa for Cars</strong> reflects the same careful treatment and restoration mindset we apply to every vehicle.
               </p>
             </div>
-            
-            <div className="grid grid-cols-1 gap-6">
-               <div className="border border-brand-black p-6 hover:bg-brand-black hover:text-white transition-colors group">
-                 <div className="flex items-center gap-4 mb-3">
-                   <Award className="w-6 h-6"/>
-                   <h4 className="font-display font-bold text-xl uppercase">Certified Pros</h4>
-                 </div>
-                 <p className="font-mono text-xs text-gray-500 group-hover:text-gray-300">IDA Certified Detailers & Ceramic Pro Installers.</p>
-               </div>
-               
-               <div className="border border-brand-black p-6 hover:bg-brand-black hover:text-white transition-colors group">
-                 <div className="flex items-center gap-4 mb-3">
-                   <Heart className="w-6 h-6"/>
-                   <h4 className="font-display font-bold text-xl uppercase">Passion Driven</h4>
-                 </div>
-                 <p className="font-mono text-xs text-gray-500 group-hover:text-gray-300">We treat your 2005 Honda with the same respect as a 2024 Ferrari.</p>
-               </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm">
+                <Award className="h-6 w-6 text-brand-mclaren" />
+                <h3 className="mt-4 font-display text-xl font-semibold uppercase text-brand-black">Certified Pros</h3>
+                <p className="mt-2 text-sm leading-relaxed text-gray-600">
+                  IDA-certified detailers with disciplined prep and finish standards.
+                </p>
+              </div>
+              <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm">
+                <Heart className="h-6 w-6 text-brand-mclaren" />
+                <h3 className="mt-4 font-display text-xl font-semibold uppercase text-brand-black">Passion Driven</h3>
+                <p className="mt-2 text-sm leading-relaxed text-gray-600">
+                  We treat daily drivers and high-performance cars with the same care.
+                </p>
+              </div>
+              <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm sm:col-span-2">
+                <Users className="h-6 w-6 text-brand-mclaren" />
+                <h3 className="mt-4 font-display text-xl font-semibold uppercase text-brand-black">Client First</h3>
+                <p className="mt-2 text-sm leading-relaxed text-gray-600">
+                  Transparent recommendations, realistic timelines, and clear communication from drop-off to handover.
+                </p>
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      </section>
     </div>
   );
 };

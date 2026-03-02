@@ -2,7 +2,7 @@ import React from 'react';
 import { ArrowRight } from 'lucide-react';
 
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: 'primary' | 'secondary' | 'outline' | 'white';
+  variant?: 'primary' | 'secondary' | 'outline' | 'white' | 'black';
   icon?: boolean;
   fullWidth?: boolean;
 }
@@ -15,14 +15,15 @@ const Button: React.FC<ButtonProps> = ({
   className = '',
   ...props 
 }) => {
-  // Brutalist styles: No rounded corners, sharp borders, uppercase text
-  const baseStyles = "relative inline-flex items-center justify-center px-8 py-4 font-display font-bold uppercase tracking-widest transition-all duration-200 focus:outline-none border border-brand-black disabled:opacity-50 disabled:cursor-not-allowed";
+  const baseStyles =
+    "inline-flex items-center justify-center gap-2 rounded-lg px-6 py-3.5 font-display text-sm font-semibold uppercase tracking-[0.08em] transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-mclaren/40 disabled:opacity-50 disabled:cursor-not-allowed";
   
   const variants = {
-    primary: "bg-brand-black text-white hover:bg-white hover:text-brand-black",
-    secondary: "bg-brand-gray text-brand-black hover:bg-brand-black hover:text-white",
-    outline: "bg-transparent text-brand-black hover:bg-brand-black hover:text-white",
-    white: "bg-white text-brand-black hover:bg-brand-black hover:text-white border-white" // For dark backgrounds
+    primary: "bg-brand-mclaren text-white shadow-sm hover:bg-orange-600 hover:shadow-md",
+    secondary: "bg-brand-black text-white shadow-sm hover:bg-neutral-800 hover:shadow-md",
+    black: "bg-brand-black text-white shadow-sm hover:bg-neutral-800 hover:shadow-md",
+    outline: "border border-neutral-300 bg-white text-brand-black hover:border-brand-mclaren hover:text-brand-mclaren",
+    white: "border border-white/50 bg-white text-brand-black hover:bg-neutral-100"
   };
 
   const widthClass = fullWidth ? "w-full" : "";

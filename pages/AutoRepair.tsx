@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import Button from '../components/Button';
 import { Wrench } from 'lucide-react';
+import Button from '../components/Button';
 
 const AutoRepair: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -8,57 +8,47 @@ const AutoRepair: React.FC = () => {
 
   const handleSubscribe = (e: React.FormEvent) => {
     e.preventDefault();
-    if (email) {
-      setSubscribed(true);
-      setEmail('');
-    }
+    if (!email) return;
+    setSubscribed(true);
+    setEmail('');
   };
 
   return (
-    <div className="min-h-screen bg-brand-black text-white flex flex-col items-center justify-center relative overflow-hidden px-4">
-      {/* Background Pattern */}
-      <div className="absolute inset-0 opacity-10 pointer-events-none">
-         <div className="absolute top-0 left-0 w-full h-full bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')]"></div>
-      </div>
-
-      <div className="z-10 text-center max-w-2xl mx-auto">
-        <div className="mb-8 flex justify-center">
-          <div className="w-20 h-20 border-2 border-white rounded-full flex items-center justify-center animate-pulse">
-            <Wrench className="w-10 h-10" />
-          </div>
+    <div className="min-h-screen bg-brand-gray px-4 py-16 md:py-24">
+      <div className="mx-auto max-w-3xl rounded-2xl border border-neutral-200 bg-white p-8 text-center shadow-sm md:p-12">
+        <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-orange-100 text-brand-mclaren">
+          <Wrench className="h-8 w-8" />
         </div>
-        
-        <h1 className="font-display font-bold text-6xl md:text-8xl uppercase mb-4 tracking-tighter">
-          Coming<br/><span className="text-outline-white">Soon</span>
+        <span className="inline-block rounded-full bg-neutral-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.08em] text-gray-600">
+          New Service Division
+        </span>
+        <h1 className="mt-5 font-display text-4xl font-bold uppercase leading-[0.95] text-brand-black md:text-6xl">
+          Auto Repair
+          <br />
+          Coming Soon
         </h1>
-        
-        <p className="font-mono text-sm md:text-base uppercase tracking-widest mb-12 text-gray-400">
-          Spa for Cars Auto Repair Division.<br/>
-          Precision mechanics meeting luxury care.
+        <p className="mx-auto mt-6 max-w-2xl text-base leading-relaxed text-gray-600 md:text-lg">
+          We are building a dedicated repair program to pair mechanical reliability with the same premium detailing standards.
         </p>
 
         {subscribed ? (
-          <div className="bg-white/10 border border-white/20 p-8 animate-fade-in">
-            <p className="font-display font-bold text-xl uppercase">You're on the list.</p>
-            <p className="font-mono text-xs mt-2 text-gray-400">We'll notify you when the garage opens.</p>
+          <div className="animate-fade-in mt-8 rounded-xl border border-emerald-200 bg-emerald-50 p-6">
+            <p className="font-display text-xl font-semibold uppercase text-emerald-900">You&apos;re on the list</p>
+            <p className="mt-2 text-sm text-emerald-700">We&apos;ll notify you as soon as bookings open.</p>
           </div>
         ) : (
-          <form onSubmit={handleSubscribe} className="flex flex-col md:flex-row gap-4 max-w-md mx-auto">
-            <input 
-              type="email" 
-              placeholder="ENTER EMAIL FOR UPDATES" 
-              className="flex-grow bg-transparent border border-white p-4 font-mono text-xs text-white placeholder:text-gray-600 focus:outline-none focus:bg-white/5 uppercase"
+          <form onSubmit={handleSubscribe} className="mx-auto mt-8 flex max-w-xl flex-col gap-3 sm:flex-row">
+            <input
+              type="email"
+              required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              required
+              placeholder="Enter your email for updates"
+              className="flex-1 rounded-lg border border-neutral-300 bg-white px-4 py-3 text-sm text-brand-black focus:border-brand-mclaren focus:outline-none"
             />
-            <Button variant="white" type="submit">Notify Me</Button>
+            <Button type="submit">Notify Me</Button>
           </form>
         )}
-      </div>
-
-      <div className="absolute bottom-8 left-0 w-full text-center">
-        <p className="font-mono text-[10px] uppercase text-gray-600">Expected Launch: Q4 2025</p>
       </div>
     </div>
   );
