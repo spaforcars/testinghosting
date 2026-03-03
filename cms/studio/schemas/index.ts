@@ -1,0 +1,31 @@
+import {
+  aboutPage,
+  autoRepairPage,
+  galleryPage,
+  giftCardsPage,
+  siteSettings,
+  navigationConfig,
+  promoPlacement,
+  homePage,
+  servicesPage,
+  fleetPage,
+  faqPage,
+  contactPage,
+  pricingPage,
+} from '../../sanity/schemas';
+
+export const schemaTypes = [
+  siteSettings,
+  navigationConfig,
+  promoPlacement,
+  homePage,
+  servicesPage,
+  fleetPage,
+  faqPage,
+  contactPage,
+  aboutPage,
+  galleryPage,
+  autoRepairPage,
+  giftCardsPage,
+  pricingPage,
+];

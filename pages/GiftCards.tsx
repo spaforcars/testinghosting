@@ -1,8 +1,11 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Check, Loader2 } from 'lucide-react';
 import { loadStripe } from '@stripe/stripe-js';
 import { Elements, PaymentElement, useElements, useStripe } from '@stripe/react-stripe-js';
 import Button from '../components/Button';
+import { useCmsPage } from '../hooks/useCmsPage';
+import { defaultGiftCardsPageContent } from '../lib/cmsDefaults';
+import { adaptGiftCardsContent } from '../lib/contentAdapter';
 
 const stripePublicKey =
   (typeof window !== 'undefined' &&
@@ -10,8 +13,6 @@ const stripePublicKey =
   'pk_test_51O...placeholder';
 
 const stripePromise = loadStripe(stripePublicKey);
-
-const presetAmounts = [50, 100, 200, 300, 500];
 
 const CheckoutForm: React.FC<{
   amount: number;
@@ -86,6 +87,8 @@ const CheckoutForm: React.FC<{
 };
 
 const GiftCards: React.FC = () => {
+  const { data: cmsData } = useCmsPage('gift-cards', defaultGiftCardsPageContent);
+  const content = adaptGiftCardsContent(cmsData);
   const [step, setStep] = useState<'config' | 'payment' | 'success'>('config');
   const [selectedAmount, setSelectedAmount] = useState(100);
   const [customAmount, setCustomAmount] = useState('');
@@ -106,10 +109,17 @@ const GiftCards: React.FC = () => {
     return Number.isFinite(parsed) ? parsed : 0;
   }, [customAmount, customEnabled, selectedAmount]);
 
+  useEffect(() => {
+    if (content.presetAmounts.length === 0) return;
+    if (!content.presetAmounts.includes(selectedAmount) && !customEnabled) {
+      setSelectedAmount(content.presetAmounts[0]);
+    }
+  }, [content.presetAmounts, customEnabled, selectedAmount]);
+
   const canProceed =
     formData.recipientEmail.trim().length > 0 &&
     formData.senderName.trim().length > 0 &&
-    effectiveAmount >= 25;
+    effectiveAmount >= content.minCustomAmount;
 
   const updateField =
     (field: 'recipientEmail' | 'senderName' | 'message') =>
@@ -153,13 +163,13 @@ const GiftCards: React.FC = () => {
       <section className="border-b border-neutral-200 bg-gradient-to-b from-white to-neutral-50 px-4 py-16 md:py-20">
         <div className="mx-auto max-w-7xl">
           <span className="inline-block rounded-full bg-orange-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.08em] text-brand-mclaren">
-            Gift Cards
+            {content.badge}
           </span>
           <h1 className="mt-5 max-w-4xl font-display text-4xl font-bold uppercase leading-[0.95] text-brand-black md:text-6xl">
-            Send Premium Vehicle Care As A Gift
+            {content.title}
           </h1>
           <p className="mt-6 max-w-3xl text-base leading-relaxed text-gray-600 md:text-lg">
-            Digital gift cards are delivered instantly and can be used for any Spa for Cars service.
+            {content.subtitle}
           </p>
         </div>
       </section>
@@ -170,19 +180,14 @@ const GiftCards: React.FC = () => {
             <div className="relative overflow-hidden rounded-xl bg-brand-black p-6 text-white">
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(255,122,0,0.24),transparent_60%)]" />
               <div className="relative">
-                <p className="text-xs uppercase tracking-[0.08em] text-neutral-300">Spa for Cars</p>
-                <p className="mt-2 font-display text-3xl font-semibold uppercase">Gift Card</p>
+                <p className="text-xs uppercase tracking-[0.08em] text-neutral-300">{content.cardBrand}</p>
+                <p className="mt-2 font-display text-3xl font-semibold uppercase">{content.cardTitle}</p>
                 <p className="mt-12 text-4xl font-bold">${Math.round(effectiveAmount)}</p>
-                <p className="mt-3 text-sm text-neutral-300">Valid on all detailing and protection services</p>
+                <p className="mt-3 text-sm text-neutral-300">{content.cardTagline}</p>
               </div>
             </div>
             <div className="mt-8 space-y-3 text-sm text-gray-600">
-              {[
-                'Instant digital delivery by email',
-                'No expiry date',
-                'Redeemable across all services',
-                'Great for enthusiasts and new car owners',
-              ].map((item) => (
+              {content.benefits.map((item) => (
                 <div key={item} className="flex items-start gap-2">
                   <Check className="mt-0.5 h-4 w-4 text-brand-mclaren" />
                   <span>{item}</span>
@@ -194,14 +199,16 @@ const GiftCards: React.FC = () => {
           <div className="rounded-2xl border border-neutral-200 bg-white p-8 shadow-sm">
             {step === 'config' && (
               <>
-                <h2 className="font-display text-3xl font-semibold uppercase text-brand-black">Configure Gift Card</h2>
+                <h2 className="font-display text-3xl font-semibold uppercase text-brand-black">
+                  {content.configureTitle}
+                </h2>
 
                 <div className="mt-6">
                   <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.08em] text-gray-500">
                     Choose Amount
                   </label>
                   <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
-                    {presetAmounts.map((amount) => (
+                    {content.presetAmounts.map((amount) => (
                       <button
                         key={amount}
                         type="button"
@@ -235,10 +242,10 @@ const GiftCards: React.FC = () => {
                     <div className="mt-3">
                       <input
                         type="number"
-                        min={25}
+                        min={content.minCustomAmount}
                         value={customAmount}
                         onChange={(e) => setCustomAmount(e.target.value)}
-                        placeholder="Minimum $25"
+                        placeholder={`Minimum $${content.minCustomAmount}`}
                         className="w-full rounded-lg border border-neutral-300 bg-white px-4 py-3 text-sm text-brand-black focus:border-brand-mclaren focus:outline-none"
                       />
                     </div>
@@ -247,7 +254,9 @@ const GiftCards: React.FC = () => {
 
                 <div className="mt-6 space-y-4">
                   <div>
-                    <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.08em] text-gray-500">Recipient Email</label>
+                    <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.08em] text-gray-500">
+                      {content.recipientEmailLabel}
+                    </label>
                     <input
                       type="email"
                       value={formData.recipientEmail}
@@ -257,7 +266,9 @@ const GiftCards: React.FC = () => {
                     />
                   </div>
                   <div>
-                    <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.08em] text-gray-500">From</label>
+                    <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.08em] text-gray-500">
+                      {content.senderNameLabel}
+                    </label>
                     <input
                       type="text"
                       value={formData.senderName}
@@ -267,7 +278,9 @@ const GiftCards: React.FC = () => {
                     />
                   </div>
                   <div>
-                    <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.08em] text-gray-500">Message</label>
+                    <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.08em] text-gray-500">
+                      {content.messageLabel}
+                    </label>
                     <textarea
                       value={formData.message}
                       onChange={updateField('message')}
@@ -285,9 +298,9 @@ const GiftCards: React.FC = () => {
 
                 <div className="mt-6">
                   <Button onClick={initiatePayment} disabled={!canProceed || isCreatingPayment} fullWidth icon>
-                    {isCreatingPayment ? 'Preparing Payment...' : 'Proceed To Payment'}
+                    {isCreatingPayment ? content.proceedingButtonLabel : content.proceedButtonLabel}
                   </Button>
-                  <p className="mt-3 text-center text-xs text-gray-500">Secure checkout powered by Stripe.</p>
+                  <p className="mt-3 text-center text-xs text-gray-500">{content.paymentNote}</p>
                 </div>
               </>
             )}
@@ -295,13 +308,15 @@ const GiftCards: React.FC = () => {
             {step === 'payment' && clientSecret && (
               <>
                 <div className="mb-6 flex items-center justify-between">
-                  <h2 className="font-display text-3xl font-semibold uppercase text-brand-black">Secure Payment</h2>
+                  <h2 className="font-display text-3xl font-semibold uppercase text-brand-black">
+                    {content.paymentTitle}
+                  </h2>
                   <button
                     type="button"
                     onClick={() => setStep('config')}
                     className="text-sm font-medium text-gray-500 transition-colors hover:text-brand-mclaren"
                   >
-                    Back
+                    {content.backToConfigLabel}
                   </button>
                 </div>
                 <Elements stripe={stripePromise} options={{ clientSecret, appearance: { theme: 'stripe' } }}>
@@ -321,9 +336,11 @@ const GiftCards: React.FC = () => {
                 <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
                   <Check className="h-8 w-8" />
                 </div>
-                <h2 className="mt-6 font-display text-3xl font-semibold uppercase text-brand-black">Purchase Complete</h2>
+                <h2 className="mt-6 font-display text-3xl font-semibold uppercase text-brand-black">
+                  {content.successTitle}
+                </h2>
                 <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-gray-600">
-                  Your gift card has been sent to {formData.recipientEmail}.
+                  {content.successMessagePrefix} {formData.recipientEmail}.
                 </p>
                 <div className="mt-8">
                   <Button
@@ -332,11 +349,11 @@ const GiftCards: React.FC = () => {
                       setClientSecret('');
                       setCustomEnabled(false);
                       setCustomAmount('');
-                      setSelectedAmount(100);
+                      setSelectedAmount(content.presetAmounts[0] || 100);
                       setFormData({ recipientEmail: '', senderName: '', message: '' });
                     }}
                   >
-                    Send Another Gift Card
+                    {content.resetButtonLabel}
                   </Button>
                 </div>
               </div>

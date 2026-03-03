@@ -22,3 +22,13 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Environment / local secrets
+.env
+.env.*
+!.env.example
+cms/studio/.env
+
+# Sanity Studio generated output
+cms/studio/.sanity/
+studio-spaforcars/

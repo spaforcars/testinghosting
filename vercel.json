@@ -2,6 +2,9 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "framework": "vite",
+  "crons": [
+    { "path": "/api/cron/retry-notifications", "schedule": "*/5 * * * *" }
+  ],
   "rewrites": [
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ]

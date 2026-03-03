@@ -1,37 +1,13 @@
 import React, { useState } from 'react';
 import { Minus, Plus } from 'lucide-react';
-import { FaqItem } from '../types';
+import { useCmsPage } from '../hooks/useCmsPage';
+import { adaptFaqContent } from '../lib/contentAdapter';
+import { defaultFaqPageContent } from '../lib/cmsDefaults';
 
 const FAQ: React.FC = () => {
+  const { data: cmsData } = useCmsPage('faq', defaultFaqPageContent);
+  const content = adaptFaqContent(cmsData);
   const [openIndex, setOpenIndex] = useState<number | null>(0);
-
-  const faqs: FaqItem[] = [
-    {
-      question: 'How long does a full detail take?',
-      answer:
-        'A standard full detail typically takes 3-5 hours depending on vehicle size and condition. Ceramic coating packages may require 24-48 hours for proper prep and curing.',
-    },
-    {
-      question: 'Do you offer mobile detailing?',
-      answer:
-        'Yes. We offer mobile service for fleet clients and selected premium packages. Paint correction and ceramic coatings are best completed in our controlled studio environment.',
-    },
-    {
-      question: 'What is the difference between wax and ceramic coating?',
-      answer:
-        'Wax sits on top of the paint and usually lasts 1-3 months. Ceramic coating bonds to the surface and provides longer protection, stronger chemical resistance, and easier maintenance.',
-    },
-    {
-      question: 'How should I maintain my car after a coating?',
-      answer:
-        'Avoid brush-based automatic washes. Use pH-neutral soap and proper hand-wash technique. We provide a full aftercare guide with every coating package.',
-    },
-    {
-      question: 'Is there a cancellation fee?',
-      answer:
-        'We request at least 24 hours notice. Cancellations within 24 hours may be subject to a $50 fee.',
-    },
-  ];
 
   return (
     <div className="min-h-screen bg-brand-gray">
@@ -51,7 +27,7 @@ const FAQ: React.FC = () => {
 
       <section className="px-4 py-16 md:py-20">
         <div className="mx-auto max-w-4xl space-y-4">
-          {faqs.map((faq, index) => {
+          {content.items.map((faq, index) => {
             const isOpen = openIndex === index;
             return (
               <article key={faq.question} className="overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm">

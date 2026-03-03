@@ -1,0 +1,22 @@
+{
+  "name": "spa-for-car-studio",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "sanity dev",
+    "build": "sanity build",
+    "start": "sanity start",
+    "deploy": "sanity deploy"
+  },
+  "dependencies": {
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3",
+    "sanity": "^3.87.0",
+    "styled-components": "^6.1.13"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "typescript": "~5.8.2"
+  }
+}

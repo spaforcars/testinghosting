@@ -1,133 +1,104 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Check, X } from 'lucide-react';
+import { Check } from 'lucide-react';
 import Button from '../components/Button';
 import ServiceNotice from '../components/ServiceNotice';
+import { useCmsPage } from '../hooks/useCmsPage';
+import {
+  defaultPricingPageContent,
+  defaultServicesPageContent,
+} from '../lib/cmsDefaults';
+import { adaptPricingContent, adaptServicesContent } from '../lib/contentAdapter';
 
 const Pricing: React.FC = () => {
-  const tiers = [
-    {
-      name: 'The Refresh',
-      price: '$95',
-      description: 'Essential maintenance for regular upkeep.',
-      features: [
-        { name: 'Foam Hand Wash', included: true },
-        { name: 'Wheel Cleaning', included: true },
-        { name: 'Vacuum & Wipe Down', included: true },
-        { name: 'Tire Dressing', included: true },
-        { name: 'Spray Wax', included: true },
-        { name: 'Clay Bar Treatment', included: false },
-        { name: 'Machine Polish', included: false },
-        { name: 'Leather Conditioning', included: false },
-        { name: 'Ceramic Sealant', included: false },
-      ],
-    },
-    {
-      name: 'Signature Detail',
-      price: '$295',
-      description: 'Deep clean and gloss enhancement.',
-      highlight: true,
-      features: [
-        { name: 'Foam Hand Wash', included: true },
-        { name: 'Wheel Cleaning', included: true },
-        { name: 'Vacuum & Wipe Down', included: true },
-        { name: 'Tire Dressing', included: true },
-        { name: 'Spray Wax', included: true },
-        { name: 'Clay Bar Treatment', included: true },
-        { name: 'Machine Polish', included: true },
-        { name: 'Leather Conditioning', included: true },
-        { name: 'Ceramic Sealant', included: true },
-      ],
-    },
-    {
-      name: 'Ceramic Coating',
-      price: '$800',
-      description: 'Long-term protection and premium gloss.',
-      features: [
-        { name: 'Foam Hand Wash', included: true },
-        { name: 'Wheel Cleaning', included: true },
-        { name: 'Vacuum & Wipe Down', included: true },
-        { name: 'Tire Dressing', included: true },
-        { name: 'Spray Wax', included: true },
-        { name: 'Clay Bar Treatment', included: true },
-        { name: 'Machine Polish', included: true },
-        { name: 'Leather Conditioning', included: true },
-        { name: 'Ceramic Sealant', included: true },
-      ],
-    },
-  ];
+  const { data: pricingCmsData } = useCmsPage('pricing', defaultPricingPageContent);
+  const { data: servicesCmsData } = useCmsPage('services', defaultServicesPageContent);
+
+  const content = adaptPricingContent(pricingCmsData);
+  const servicesContent = adaptServicesContent(servicesCmsData);
+
+  const tiers = servicesContent.services;
+  const fallbackHighlightId = tiers[Math.min(1, Math.max(0, tiers.length - 1))]?.id;
+  const highlightServiceId = content.highlightServiceId || fallbackHighlightId;
 
   return (
     <div className="min-h-screen bg-brand-gray">
       <section className="border-b border-neutral-200 bg-gradient-to-b from-white to-neutral-50 px-4 py-16 md:py-20">
         <div className="mx-auto max-w-7xl">
           <span className="inline-block rounded-full bg-orange-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.08em] text-brand-mclaren">
-            Transparent Pricing
+            {content.badge}
           </span>
           <h1 className="mt-5 max-w-4xl font-display text-4xl font-bold uppercase leading-[0.95] text-brand-black md:text-6xl">
-            Premium Care Without Hidden Fees
+            {content.title}
           </h1>
           <p className="mt-6 max-w-3xl text-base leading-relaxed text-gray-600 md:text-lg">
-            Choose a package based on your vehicle condition and finish expectations. We can always tailor from here.
+            {content.subtitle}
           </p>
         </div>
       </section>
 
       <section className="px-4 py-16 md:py-20">
         <div className="mx-auto grid max-w-7xl gap-6 md:grid-cols-3">
-          {tiers.map((tier, index) => (
-            <article
-              key={tier.name}
-              className={`relative rounded-2xl border p-8 shadow-sm ${
-                tier.highlight
-                  ? 'border-brand-black bg-brand-black text-white'
-                  : 'border-neutral-200 bg-white text-brand-black'
-              }`}
-            >
-              {tier.highlight && (
-                <div className="absolute right-4 top-4 rounded-full bg-orange-200 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-brand-black">
-                  Most Popular
-                </div>
-              )}
-
-              <h2 className="font-display text-3xl font-semibold uppercase">{tier.name}</h2>
-              <p className="mt-2 text-4xl font-bold">{tier.price}</p>
-              <p className={`mt-3 text-sm ${tier.highlight ? 'text-neutral-300' : 'text-gray-600'}`}>{tier.description}</p>
-
-              <div className="mt-6 space-y-3">
-                {tier.features.map((feature) => (
-                  <div key={feature.name} className="flex items-start gap-2 text-sm">
-                    {feature.included ? (
-                      <Check className={`mt-0.5 h-4 w-4 shrink-0 ${tier.highlight ? 'text-orange-200' : 'text-brand-mclaren'}`} />
-                    ) : (
-                      <X className="mt-0.5 h-4 w-4 shrink-0 text-gray-300" />
-                    )}
-                    <span className={!feature.included ? 'text-gray-400 line-through' : ''}>{feature.name}</span>
+          {tiers.map((tier) => {
+            const highlight = tier.id === highlightServiceId;
+            return (
+              <article
+                key={tier.id || tier.title}
+                className={`relative rounded-2xl border p-8 shadow-sm ${
+                  highlight
+                    ? 'border-brand-black bg-brand-black text-white'
+                    : 'border-neutral-200 bg-white text-brand-black'
+                }`}
+              >
+                {highlight && (
+                  <div className="absolute right-4 top-4 rounded-full bg-orange-200 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-brand-black">
+                    {content.mostPopularBadge}
                   </div>
-                ))}
-              </div>
+                )}
 
-              <div className="mt-8">
-                <Link to={`/booking?service=${index + 1}`}>
-                  <Button variant={tier.highlight ? 'white' : 'primary'} fullWidth>
-                    Select Plan
-                  </Button>
-                </Link>
-              </div>
-            </article>
-          ))}
+                <h2 className="font-display text-3xl font-semibold uppercase">{tier.title}</h2>
+                <p className="mt-2 text-4xl font-bold">{tier.price}</p>
+                <p className={`mt-3 text-sm ${highlight ? 'text-neutral-300' : 'text-gray-600'}`}>
+                  {tier.description}
+                </p>
+
+                <div className="mt-6 space-y-3">
+                  {tier.features.map((feature) => (
+                    <div key={feature} className="flex items-start gap-2 text-sm">
+                      <Check
+                        className={`mt-0.5 h-4 w-4 shrink-0 ${
+                          highlight ? 'text-orange-200' : 'text-brand-mclaren'
+                        }`}
+                      />
+                      <span>{feature}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-8">
+                  <Link to={`/booking?service=${tier.id || ''}`}>
+                    <Button variant={highlight ? 'white' : 'primary'} fullWidth>
+                      {content.selectPlanLabel}
+                    </Button>
+                  </Link>
+                </div>
+              </article>
+            );
+          })}
         </div>
       </section>
 
       <section className="border-t border-neutral-200 bg-white px-4 py-16">
         <div className="mx-auto max-w-3xl text-center">
-          <h3 className="font-display text-3xl font-bold uppercase text-brand-black">Need A Custom Scope?</h3>
+          <h3 className="font-display text-3xl font-bold uppercase text-brand-black">
+            {content.customQuoteTitle}
+          </h3>
           <p className="mt-4 text-base leading-relaxed text-gray-600">
-            For fleet contracts, restoration projects, or unique vehicles, we can build a custom plan around your needs.
+            {content.customQuoteBody}
           </p>
           <div className="mt-8">
-            <Link to="/contact">
-              <Button variant="outline">Request Custom Quote</Button>
+            <Link to={content.customQuoteButtonPath}>
+              <Button variant="outline">{content.customQuoteButtonLabel}</Button>
             </Link>
           </div>
         </div>

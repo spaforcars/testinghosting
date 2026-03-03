@@ -3,82 +3,27 @@ import { Link } from 'react-router-dom';
 import { Clock3, ShieldCheck, Sparkles } from 'lucide-react';
 import Button from '../components/Button';
 import ServiceNotice from '../components/ServiceNotice';
-import { Service } from '../types';
+import { adaptServicesContent } from '../lib/contentAdapter';
+import { defaultServicesPageContent } from '../lib/cmsDefaults';
+import { useCmsPage } from '../hooks/useCmsPage';
 
 const Services: React.FC = () => {
-  type ServiceWithDetails = Service & {
-    idealFor: string;
-    process: string;
-    notes: string;
-  };
-
-  const services: ServiceWithDetails[] = [
-    {
-      id: '1',
-      title: 'The Refresh',
-      description: 'A premium maintenance wash and light interior detail. Perfect for regular upkeep.',
-      category: 'Detailing',
-      price: '$95+',
-      duration: '1.5 Hours',
-      features: ['Foam Hand Wash', 'Wheel Cleaning', 'Vacuum & Wipe Down', 'Tire Dressing', 'Spray Wax'],
-      image: '/client-images/IMG_2414.PNG',
-      idealFor: 'Weekly or bi-weekly maintenance on daily-driven vehicles.',
-      process: 'Safe foam pre-wash, contact wash, wheel/tire cleaning, interior vacuum, and final gloss finish.',
-      notes: 'Best kept on a 2-4 week schedule for a consistently clean car.',
-    },
-    {
-      id: '2',
-      title: 'Signature Detail',
-      description: 'Complete interior deep clean and exterior gloss enhancement for a near-showroom finish.',
-      category: 'Detailing',
-      price: '$295+',
-      duration: '4 Hours',
-      features: ['Everything in Refresh', 'Clay Bar Treatment', 'Machine Polish', 'Leather Conditioning', 'Steam Clean', '6-Month Sealant'],
-      image: '/client-images/IMG_2461.PNG',
-      idealFor: 'Vehicles that need a seasonal reset or pre-sale refresh.',
-      process: 'Deep interior steam treatment, decontamination wash, paint gloss enhancement, and protective sealant.',
-      notes: 'Recommended every 4-6 months depending on usage and storage conditions.',
-    },
-    {
-      id: '3',
-      title: 'Ceramic Coating',
-      description: 'Long-lasting paint protection that delivers deep gloss, easier washing, and hydrophobic defense.',
-      category: 'Protection',
-      price: '$800+',
-      duration: '1 Day',
-      features: ['3-Year Warranty', 'Paint Correction', 'Extreme Hydrophobicity', 'UV Protection', 'Self-Cleaning'],
-      image: '/client-images/IMG_2449.PNG',
-      idealFor: 'Owners looking for long-term paint protection and easier maintenance.',
-      process: 'Multi-stage prep and correction, panel wipe-down, precision coating installation, and cure inspection.',
-      notes: 'Follow-up maintenance wash is recommended every 4-6 weeks.',
-    },
-    {
-      id: '4',
-      title: 'PPF Front Package',
-      description: 'Invisible physical protection against rock chips and road debris for high-impact front surfaces.',
-      category: 'Protection',
-      price: '$1,800+',
-      duration: '2 Days',
-      features: ['10-Year Warranty', 'Self-Healing Film', 'Covers Bumper/Hood', 'Invisible Edges', 'Stain Resistant'],
-      image: '/client-images/IMG_2421_after.PNG',
-      idealFor: 'New vehicles, highway drivers, and performance cars prone to stone chips.',
-      process: 'Precision template prep, edge wrapping, contaminant control, and final post-install inspection.',
-      notes: 'Pairs best with ceramic coating for full exterior protection.',
-    },
-  ];
+  const { data: cmsData } = useCmsPage('services', defaultServicesPageContent);
+  const content = adaptServicesContent(cmsData);
+  const services = content.services;
 
   return (
     <div className="min-h-screen bg-brand-gray">
       <section className="border-b border-neutral-200 bg-gradient-to-b from-white to-neutral-50 px-4 py-16 md:py-20">
         <div className="mx-auto max-w-7xl">
           <span className="inline-block rounded-full bg-orange-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.08em] text-brand-mclaren">
-            Service Menu
+            {content.badge}
           </span>
           <h1 className="mt-5 max-w-4xl font-display text-4xl font-bold uppercase leading-[0.95] text-brand-black md:text-6xl">
-            Professional Detailing Packages Built For Real Results
+            {content.title}
           </h1>
           <p className="mt-6 max-w-3xl text-base leading-relaxed text-gray-600 md:text-lg">
-            Every package is built with premium products, disciplined process, and clear deliverables so you know exactly what your vehicle receives.
+            {content.subtitle}
           </p>
         </div>
       </section>
@@ -150,7 +95,7 @@ const Services: React.FC = () => {
                         Premium-grade products included
                       </span>
                     </div>
-                    <Link to={`/booking?service=${service.id}`}>
+                    <Link to={`/booking?service=${service.id || ''}`}>
                       <Button icon>Book Now</Button>
                     </Link>
                   </div>

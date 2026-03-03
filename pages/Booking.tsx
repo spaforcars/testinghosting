@@ -3,6 +3,10 @@ import { useLocation } from 'react-router-dom';
 import { ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight, Clock3 } from 'lucide-react';
 import Button from '../components/Button';
 import ServiceNotice from '../components/ServiceNotice';
+import { apiRequest, ApiError } from '../lib/apiClient';
+import { useCmsPage } from '../hooks/useCmsPage';
+import { defaultServicesPageContent } from '../lib/cmsDefaults';
+import { adaptServicesContent } from '../lib/contentAdapter';
 
 type BookingService = {
   id: string;
@@ -13,12 +17,16 @@ type BookingService = {
 
 const Booking: React.FC = () => {
   const location = useLocation();
+  const { data: servicesCmsData } = useCmsPage('services', defaultServicesPageContent);
+  const servicesContent = adaptServicesContent(servicesCmsData);
   const [step, setStep] = useState(1);
   const [selectedService, setSelectedService] = useState<BookingService | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [details, setDetails] = useState({
     fullName: '',
     email: '',
@@ -28,13 +36,14 @@ const Booking: React.FC = () => {
   });
 
   const services: BookingService[] = useMemo(
-    () => [
-      { id: '1', name: 'The Refresh', price: '$95', duration: '1.5h' },
-      { id: '2', name: 'Signature Detail', price: '$295', duration: '4h' },
-      { id: '3', name: 'Ceramic Coating', price: '$800', duration: '1 Day' },
-      { id: '4', name: 'PPF Front', price: '$1,800', duration: '2 Days' },
-    ],
-    []
+    () =>
+      servicesContent.services.map((service, index) => ({
+        id: service.id || `${index + 1}`,
+        name: service.title,
+        price: service.price,
+        duration: service.duration,
+      })),
+    [servicesContent.services]
   );
 
   useEffect(() => {
@@ -97,11 +106,36 @@ const Booking: React.FC = () => {
     return days;
   };
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     if (!details.fullName || !details.email || !details.phone || !selectedService || !selectedDate || !selectedTime) {
       return;
     }
-    setSubmitted(true);
+    setSubmitting(true);
+    setSubmitError(null);
+
+    try {
+      await apiRequest('/api/enquiries', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: details.fullName,
+          email: details.email,
+          phone: details.phone,
+          message: details.notes || `Booking request for ${details.vehicle || 'vehicle details pending'}`,
+          serviceType: selectedService.name,
+          sourcePage: 'booking',
+          metadata: {
+            selectedDate: selectedDate.toISOString(),
+            selectedTime,
+            vehicle: details.vehicle,
+          },
+        }),
+      });
+      setSubmitted(true);
+    } catch (error) {
+      setSubmitError(error instanceof ApiError ? error.message : 'Failed to submit booking request');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -357,8 +391,11 @@ const Booking: React.FC = () => {
                         >
                           <ArrowLeft className="h-4 w-4" /> Back
                         </button>
-                        <Button onClick={handleConfirm}>Confirm Booking</Button>
+                        <Button onClick={handleConfirm} disabled={submitting}>
+                          {submitting ? 'Submitting...' : 'Confirm Booking'}
+                        </Button>
                       </div>
+                      {submitError && <p className="mt-4 text-sm text-red-600">{submitError}</p>}
                     </div>
                   )}
                 </>

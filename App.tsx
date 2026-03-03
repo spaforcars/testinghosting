@@ -12,6 +12,8 @@ import FAQ from './pages/FAQ';
 import Pricing from './pages/Pricing';
 import Contact from './pages/Contact';
 import AutoRepair from './pages/AutoRepair';
+import Dashboard from './pages/Dashboard';
+import AdminDashboard from './pages/AdminDashboard';
 
 const App: React.FC = () => {
   return (
@@ -29,6 +31,8 @@ const App: React.FC = () => {
           <Route path="/contact" element={<Contact />} />
           <Route path="/faq" element={<FAQ />} />
           <Route path="/auto-repair" element={<AutoRepair />} />
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/admin" element={<AdminDashboard />} />
         </Routes>
       </Layout>
     </Router>

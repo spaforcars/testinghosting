@@ -1,25 +1,21 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Menu, X, Phone, Mail, Clock, ArrowUpRight } from 'lucide-react';
+import { useCmsPage } from '../hooks/useCmsPage';
+import { defaultNavigationContent, defaultSiteSettingsContent } from '../lib/cmsDefaults';
+import { adaptNavigationContent, adaptSiteSettingsContent } from '../lib/contentAdapter';
 
 const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const location = useLocation();
+  const { data: navigationData } = useCmsPage('navigation', defaultNavigationContent);
+  const { data: siteSettingsData } = useCmsPage('settings', defaultSiteSettingsContent);
 
-  const primaryLinks = [
-    { name: 'Home', path: '/' },
-    { name: 'Services', path: '/services' },
-    { name: 'Repair', path: '/auto-repair' },
-    { name: 'Showcase', path: '/gallery' },
-    { name: 'Fleet', path: '/fleet' },
-    { name: 'About', path: '/about' },
-    { name: 'Contact', path: '/contact' },
-  ];
+  const navigation = adaptNavigationContent(navigationData);
+  const siteSettings = adaptSiteSettingsContent(siteSettingsData);
 
-  const secondaryLinks = [
-    { name: 'FAQ', path: '/faq' },
-    { name: 'Gift Cards', path: '/gift-cards' },
-  ];
+  const primaryLinks = navigation.primaryLinks.filter((link) => link.enabled);
+  const secondaryLinks = navigation.secondaryLinks.filter((link) => link.enabled);
 
   const isActive = (path: string) =>
     path === '/' ? location.pathname === '/' : location.pathname.startsWith(path);
@@ -35,26 +31,26 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           <div className="flex flex-wrap items-center gap-4">
             <span className="inline-flex items-center gap-1.5 text-neutral-300">
               <Clock className="h-3.5 w-3.5" />
-              Mon-Sat 8:00 AM - 6:00 PM
+              {siteSettings.topBarHours}
             </span>
             <a
-              href="mailto:info@spaforcars.ca"
+              href={`mailto:${siteSettings.contactEmail}`}
               className="inline-flex items-center gap-1.5 text-neutral-300 transition-colors hover:text-white"
             >
               <Mail className="h-3.5 w-3.5" />
-              info@spaforcars.ca
+              {siteSettings.contactEmail}
             </a>
             <a
-              href="tel:4169864746"
+              href={`tel:${siteSettings.contactPhone.replace(/[^\d+]/g, '')}`}
               className="inline-flex items-center gap-1.5 text-neutral-300 transition-colors hover:text-white"
             >
               <Phone className="h-3.5 w-3.5" />
-              (416) 986-4746
+              {siteSettings.contactPhone}
             </a>
           </div>
           <div className="hidden items-center gap-4 md:flex">
             <a
-              href="https://www.instagram.com"
+              href={siteSettings.instagramUrl}
               target="_blank"
               rel="noreferrer"
               className="text-neutral-300 transition-colors hover:text-white"
@@ -62,7 +58,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
               Instagram
             </a>
             <a
-              href="https://www.tiktok.com"
+              href={siteSettings.tiktokUrl}
               target="_blank"
               rel="noreferrer"
               className="text-neutral-300 transition-colors hover:text-white"
@@ -76,10 +72,8 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       <header className="sticky top-0 z-40 border-b border-neutral-200 bg-white/95 backdrop-blur">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 lg:h-20">
           <Link to="/" className="group">
-            <span className="font-display text-2xl font-bold tracking-tight md:text-3xl">
-              <span className="text-brand-mclaren transition-colors group-hover:text-orange-600">SPA</span>{' '}
-              <span className="text-neutral-900">FOR</span>{' '}
-              <span className="text-brand-mclaren transition-colors group-hover:text-orange-600">CARS</span>
+            <span className="font-display text-2xl font-bold tracking-tight text-neutral-900 transition-colors group-hover:text-brand-mclaren md:text-3xl">
+              {siteSettings.businessName.toUpperCase()}
             </span>
           </Link>
 
@@ -94,14 +88,14 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                     : 'text-neutral-700 hover:text-brand-mclaren'
                 }`}
               >
-                {link.name}
+                {link.label}
               </Link>
             ))}
             <Link
-              to="/booking"
+              to={navigation.bookingCtaPath}
               className="ml-3 rounded-lg bg-brand-mclaren px-5 py-2.5 text-sm font-semibold uppercase tracking-[0.08em] text-white transition-colors hover:bg-orange-600"
             >
-              Book Now
+              {navigation.bookingCtaLabel}
             </Link>
           </nav>
 
@@ -127,7 +121,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                       : 'text-neutral-700 hover:bg-neutral-50 hover:text-brand-mclaren'
                   }`}
                 >
-                  {link.name}
+                  {link.label}
                 </Link>
               ))}
               <div className="my-3 border-t border-neutral-200" />
@@ -137,14 +131,14 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                   to={link.path}
                   className="block rounded-md px-4 py-3 text-sm font-medium uppercase tracking-[0.08em] text-neutral-700 transition-colors hover:bg-neutral-50 hover:text-brand-mclaren"
                 >
-                  {link.name}
+                  {link.label}
                 </Link>
               ))}
               <Link
-                to="/booking"
+                to={navigation.bookingCtaPath}
                 className="mt-2 block rounded-lg bg-brand-mclaren px-4 py-3 text-center text-sm font-semibold uppercase tracking-[0.08em] text-white transition-colors hover:bg-orange-600"
               >
-                Book Appointment
+                {navigation.bookingCtaLabel}
               </Link>
             </div>
           </div>
@@ -157,8 +151,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         <div className="mx-auto grid max-w-7xl grid-cols-1 gap-10 px-4 py-14 md:grid-cols-4">
           <div>
             <span className="mb-4 block font-display text-2xl font-bold">
-              <span className="text-brand-mclaren">SPA</span> FOR{' '}
-              <span className="text-brand-mclaren">CARS</span>
+              {siteSettings.businessName}
             </span>
             <p className="max-w-xs text-sm leading-relaxed text-neutral-400">
               Premium detailing and paint protection studio serving Aurora and the greater Toronto area.
@@ -170,7 +163,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
               {primaryLinks.map((link) => (
                 <li key={link.path}>
                   <Link to={link.path} className="text-sm text-neutral-400 transition-colors hover:text-brand-mclaren">
-                    {link.name}
+                    {link.label}
                   </Link>
                 </li>
               ))}
@@ -182,7 +175,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
               {secondaryLinks.map((link) => (
                 <li key={link.path}>
                   <Link to={link.path} className="text-sm text-neutral-400 transition-colors hover:text-brand-mclaren">
-                    {link.name}
+                    {link.label}
                   </Link>
                 </li>
               ))}
@@ -191,20 +184,20 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           <div>
             <h4 className="mb-4 text-sm font-semibold uppercase tracking-[0.08em] text-neutral-200">Contact</h4>
             <div className="space-y-2 text-sm text-neutral-400">
-              <p>Aurora, Ontario</p>
+              <p>{siteSettings.address}</p>
               <p>
-                <a href="mailto:info@spaforcars.ca" className="transition-colors hover:text-brand-mclaren">
-                  info@spaforcars.ca
+                <a href={`mailto:${siteSettings.contactEmail}`} className="transition-colors hover:text-brand-mclaren">
+                  {siteSettings.contactEmail}
                 </a>
               </p>
               <p>
-                <a href="tel:4169864746" className="transition-colors hover:text-brand-mclaren">
-                  (416) 986-4746
+                <a href={`tel:${siteSettings.contactPhone.replace(/[^\d+]/g, '')}`} className="transition-colors hover:text-brand-mclaren">
+                  {siteSettings.contactPhone}
                 </a>
               </p>
               <div className="flex gap-4 pt-2">
                 <a
-                  href="https://www.instagram.com"
+                  href={siteSettings.instagramUrl}
                   target="_blank"
                   rel="noreferrer"
                   className="inline-flex items-center gap-1.5 transition-colors hover:text-brand-mclaren"
@@ -212,7 +205,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                   Instagram <ArrowUpRight className="h-3.5 w-3.5" />
                 </a>
                 <a
-                  href="https://www.tiktok.com"
+                  href={siteSettings.tiktokUrl}
                   target="_blank"
                   rel="noreferrer"
                   className="inline-flex items-center gap-1.5 transition-colors hover:text-brand-mclaren"
@@ -225,8 +218,8 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         </div>
         <div className="border-t border-neutral-800">
           <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-2 px-4 py-4 text-xs text-neutral-500 md:flex-row">
-            <span>&copy; {new Date().getFullYear()} Spa for Cars Inc. All rights reserved.</span>
-            <span>Designed for premium automotive care</span>
+            <span>&copy; {new Date().getFullYear()} {siteSettings.businessName} Inc. All rights reserved.</span>
+            <span>{siteSettings.footerTagline}</span>
           </div>
         </div>
       </footer>

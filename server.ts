@@ -3,6 +3,9 @@ import Stripe from 'stripe';
 import nodemailer from 'nodemailer';
 import dotenv from 'dotenv';
 import cors from 'cors';
+import fs from 'fs';
+import path from 'path';
+import { pathToFileURL } from 'url';
 import { createServer as createViteServer } from 'vite';
 
 dotenv.config();
@@ -13,11 +16,62 @@ const PORT = 3000;
 app.use(cors());
 app.use(express.json());
 
+const apiDirectory = path.resolve(process.cwd(), 'api');
+
+const resolveApiHandlerPath = (requestPath: string): string | null => {
+  const cleanPath = requestPath.replace(/^\/+|\/+$/g, '');
+  if (!cleanPath) return null;
+
+  const segments = cleanPath.split('/').filter(Boolean);
+  if (!segments.length) return null;
+
+  const candidates = new Set<string>();
+  const permutations = 1 << segments.length;
+
+  // Try exact path and dynamic segment variants (e.g. /leads/:id -> leads/[id].ts).
+  for (let mask = 0; mask < permutations; mask += 1) {
+    const resolvedSegments = segments.map((segment, index) =>
+      (mask & (1 << index)) !== 0 ? '[id]' : segment
+    );
+
+    candidates.add(path.join(apiDirectory, ...resolvedSegments) + '.ts');
+    candidates.add(path.join(apiDirectory, ...resolvedSegments) + '.js');
+  }
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  return null;
+};
+
+app.use('/api', async (req, res, next) => {
+  try {
+    const handlerPath = resolveApiHandlerPath(req.path);
+    if (!handlerPath) {
+      return next();
+    }
+
+    const handlerModule = await import(pathToFileURL(handlerPath).href);
+    const handler = handlerModule.default;
+
+    if (typeof handler !== 'function') {
+      return next();
+    }
+
+    await handler(req as any, res as any);
+  } catch (error) {
+    next(error);
+  }
+});
+
 // Initialize Stripe
 // NOTE: In a real app, use process.env.STRIPE_SECRET_KEY
 // For this demo, we'll use a placeholder if not present, but it won't work for real payments without a key.
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_placeholder', {
-  apiVersion: '2025-02-24.acacia', // Use latest API version
+  apiVersion: '2026-01-28.clover', // Use latest API version
 });
 
 // Initialize Nodemailer

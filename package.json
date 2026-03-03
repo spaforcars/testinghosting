@@ -7,11 +7,16 @@
     "dev": "tsx server.ts",
     "build": "vite build",
     "start": "node server.ts",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "studio": "cd cms/studio && npm run dev",
+    "studio:build": "cd cms/studio && npm run build",
+    "cms:seed": "tsx scripts/seed-sanity.ts"
   },
   "dependencies": {
+    "@sanity/client": "^7.16.0",
     "@stripe/react-stripe-js": "^5.6.0",
     "@stripe/stripe-js": "^8.8.0",
+    "@supabase/supabase-js": "^2.98.0",
     "cors": "^2.8.6",
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
@@ -20,6 +25,7 @@
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
     "react-router-dom": "^7.12.0",
+    "resend": "^6.9.3",
     "stripe": "^20.3.1"
   },
   "devDependencies": {

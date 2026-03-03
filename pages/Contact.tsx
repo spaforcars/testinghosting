@@ -1,16 +1,52 @@
 import React, { useState } from 'react';
 import { MapPin, Phone, Mail, Clock } from 'lucide-react';
 import Button from '../components/Button';
+import { apiRequest, ApiError } from '../lib/apiClient';
+import { useCmsPage } from '../hooks/useCmsPage';
+import { adaptContactContent } from '../lib/contentAdapter';
+import { defaultContactPageContent } from '../lib/cmsDefaults';
 
 const Contact: React.FC = () => {
+  const { data: cmsData } = useCmsPage('contact', defaultContactPageContent);
+  const content = adaptContactContent(cmsData);
   const [formStatus, setFormStatus] = useState<'idle' | 'submitting' | 'success'>('idle');
+  const [formError, setFormError] = useState<string | null>(null);
+  const [formData, setFormData] = useState({
+    fullName: '',
+    email: '',
+    subject: 'General Inquiry',
+    message: '',
+  });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormStatus('submitting');
-    setTimeout(() => {
+    setFormError(null);
+
+    try {
+      await apiRequest('/api/enquiries', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: formData.fullName,
+          email: formData.email,
+          message: `[${formData.subject}] ${formData.message}`,
+          serviceType: formData.subject,
+          sourcePage: 'contact',
+          metadata: { type: 'contact_form' },
+        }),
+      });
       setFormStatus('success');
-    }, 1200);
+      setFormData({
+        fullName: '',
+        email: '',
+        subject: 'General Inquiry',
+        message: '',
+      });
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : 'Failed to send message';
+      setFormError(message);
+      setFormStatus('idle');
+    }
   };
 
   return (
@@ -21,10 +57,10 @@ const Contact: React.FC = () => {
             Contact
           </span>
           <h1 className="mt-5 max-w-4xl font-display text-4xl font-bold uppercase leading-[0.95] text-brand-black md:text-6xl">
-            Talk To Our Team
+            {content.title}
           </h1>
           <p className="mt-6 max-w-3xl text-base leading-relaxed text-gray-600 md:text-lg">
-            Send us your request and we will get back with recommendations, pricing, and next steps.
+            {content.subtitle}
           </p>
         </div>
       </section>
@@ -46,15 +82,33 @@ const Contact: React.FC = () => {
               <form onSubmit={handleSubmit} className="mt-8 space-y-5">
                 <div>
                   <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.08em] text-gray-500">Full Name</label>
-                  <input required type="text" className="w-full rounded-lg border border-neutral-300 bg-white px-4 py-3 text-sm text-brand-black focus:border-brand-mclaren focus:outline-none" placeholder="John Doe" />
+                  <input
+                    required
+                    type="text"
+                    value={formData.fullName}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, fullName: e.target.value }))}
+                    className="w-full rounded-lg border border-neutral-300 bg-white px-4 py-3 text-sm text-brand-black focus:border-brand-mclaren focus:outline-none"
+                    placeholder="John Doe"
+                  />
                 </div>
                 <div>
                   <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.08em] text-gray-500">Email Address</label>
-                  <input required type="email" className="w-full rounded-lg border border-neutral-300 bg-white px-4 py-3 text-sm text-brand-black focus:border-brand-mclaren focus:outline-none" placeholder="you@example.com" />
+                  <input
+                    required
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, email: e.target.value }))}
+                    className="w-full rounded-lg border border-neutral-300 bg-white px-4 py-3 text-sm text-brand-black focus:border-brand-mclaren focus:outline-none"
+                    placeholder="you@example.com"
+                  />
                 </div>
                 <div>
                   <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.08em] text-gray-500">Subject</label>
-                  <select className="w-full rounded-lg border border-neutral-300 bg-white px-4 py-3 text-sm text-brand-black focus:border-brand-mclaren focus:outline-none">
+                  <select
+                    value={formData.subject}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, subject: e.target.value }))}
+                    className="w-full rounded-lg border border-neutral-300 bg-white px-4 py-3 text-sm text-brand-black focus:border-brand-mclaren focus:outline-none"
+                  >
                     <option>General Inquiry</option>
                     <option>Booking Request</option>
                     <option>Fleet Program</option>
@@ -63,8 +117,15 @@ const Contact: React.FC = () => {
                 </div>
                 <div>
                   <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.08em] text-gray-500">Message</label>
-                  <textarea required className="h-32 w-full rounded-lg border border-neutral-300 bg-white px-4 py-3 text-sm text-brand-black focus:border-brand-mclaren focus:outline-none" placeholder="How can we help?" />
+                  <textarea
+                    required
+                    value={formData.message}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, message: e.target.value }))}
+                    className="h-32 w-full rounded-lg border border-neutral-300 bg-white px-4 py-3 text-sm text-brand-black focus:border-brand-mclaren focus:outline-none"
+                    placeholder="How can we help?"
+                  />
                 </div>
+                {formError && <p className="text-sm text-red-600">{formError}</p>}
                 <Button type="submit" disabled={formStatus === 'submitting'} fullWidth>
                   {formStatus === 'submitting' ? 'Sending...' : 'Send Message'}
                 </Button>
@@ -80,9 +141,12 @@ const Contact: React.FC = () => {
                   <h3 className="font-display text-lg font-semibold uppercase text-brand-black">Visit Us</h3>
                 </div>
                 <p className="mt-3 text-sm leading-relaxed text-gray-600">
-                  Aurora, Ontario
-                  <br />
-                  Greater Toronto Area
+                  {content.address.split('\n').map((line) => (
+                    <React.Fragment key={line}>
+                      {line}
+                      <br />
+                    </React.Fragment>
+                  ))}
                 </p>
               </div>
               <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm">
@@ -121,7 +185,7 @@ const Contact: React.FC = () => {
             <div className="overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm">
               <div className="h-[340px]">
                 <iframe
-                  src="https://www.google.com/maps?q=Aurora%2C%20Ontario&output=embed"
+                  src={content.mapEmbedUrl}
                   width="100%"
                   height="100%"
                   style={{ border: 0 }}
