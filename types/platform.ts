@@ -35,15 +35,115 @@ export interface Lead {
   updated_at: string;
 }
 
+export interface PaginatedResponse<T> {
+  items: T[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+}
+
+export interface CustomerVehicle {
+  id: string;
+  client_id: string;
+  plate?: string | null;
+  vin?: string | null;
+  make?: string | null;
+  model?: string | null;
+  year?: number | null;
+  color?: string | null;
+  notes?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ClientRecord {
+  id: string;
+  name: string;
+  company_name?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  alternate_phone?: string | null;
+  address_line1?: string | null;
+  address_line2?: string | null;
+  city?: string | null;
+  province?: string | null;
+  postal_code?: string | null;
+  country?: string | null;
+  tags?: string[] | null;
+  notes?: string | null;
+  assignee_id?: string | null;
+  archived: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface ServiceJob {
   id: string;
   lead_id?: string | null;
+  client_id?: string | null;
   client_name: string;
   service_type: string;
   status: string;
   scheduled_at?: string | null;
+  assignee_id?: string | null;
+  notes?: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface JobTimelineEvent {
+  id: string;
+  service_job_id: string;
+  lead_id?: string | null;
+  client_id?: string | null;
+  event_type: string;
+  note?: string | null;
+  metadata?: Record<string, unknown> | null;
+  created_by?: string | null;
+  created_at: string;
+}
+
+export type BillingStatus =
+  | 'draft'
+  | 'sent'
+  | 'partially_paid'
+  | 'paid'
+  | 'overdue'
+  | 'void';
+
+export interface BillingRecord {
+  id: string;
+  lead_id?: string | null;
+  client_id?: string | null;
+  service_job_id?: string | null;
+  record_number?: string | null;
+  record_type: string;
+  status: BillingStatus;
+  currency: string;
+  subtotal_amount: number;
+  tax_amount: number;
+  total_amount: number;
+  amount_paid: number;
+  due_at?: string | null;
+  issued_at?: string | null;
+  paid_at?: string | null;
+  notes?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface InAppNotification {
+  id: string;
+  recipient_user_id: string;
+  category: string;
+  title: string;
+  message: string;
+  entity_type?: string | null;
+  entity_id?: string | null;
+  metadata?: Record<string, unknown> | null;
+  read_at?: string | null;
+  created_at: string;
 }
 
 export interface AdminRecipient {

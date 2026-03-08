@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from './_lib/supabaseAdmin';
 import { badRequest, methodNotAllowed, serverError } from './_lib/http';
 import { getRetryDelayMinutes, parseDefaultRecipients, sendEnquiryAlertEmail } from './_lib/notifications';
 import { writeAuditLog } from './_lib/audit';
+import { notifyRoles } from './_lib/inAppNotifications';
 
 interface CreateEnquiryBody {
   name?: string;
@@ -65,15 +66,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       throw new Error(enquiryError?.message || 'Failed to create enquiry');
     }
 
-    const { error: leadError } = await supabase.from('leads').insert({
-      enquiry_id: enquiry.id,
-      name: enquiry.name,
-      email: enquiry.email,
-      phone: enquiry.phone,
-      service_type: enquiry.service_type,
-      source_page: enquiry.source_page,
-      status: 'lead',
-    });
+    const { data: lead, error: leadError } = await supabase
+      .from('leads')
+      .insert({
+        enquiry_id: enquiry.id,
+        name: enquiry.name,
+        email: enquiry.email,
+        phone: enquiry.phone,
+        service_type: enquiry.service_type,
+        source_page: enquiry.source_page,
+        status: 'lead',
+      })
+      .select('*')
+      .single();
     if (leadError) {
       console.warn('Lead creation failed:', leadError.message);
     }
@@ -152,6 +157,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         emailStatus,
       },
     });
+
+    await notifyRoles(
+      supabase,
+      ['super_admin', 'admin', 'staff'],
+      {
+        category: 'enquiry',
+        title: 'New enquiry received',
+        message: `${enquiry.name} submitted a ${enquiry.service_type || 'general'} request.`,
+        entityType: 'lead',
+        entityId: lead?.id || undefined,
+        metadata: {
+          enquiryId: enquiry.id,
+          sourcePage: enquiry.source_page,
+          serviceType: enquiry.service_type,
+          emailStatus,
+        },
+      }
+    );
 
     return res.status(200).json({
       enquiryId: enquiry.id,

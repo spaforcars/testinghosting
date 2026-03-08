@@ -31,6 +31,9 @@ const rolePermissionsFallback: Record<string, string[]> = {
     'settings.write',
     'notifications.read',
     'notifications.write',
+    'billing.read',
+    'billing.write',
+    'reports.read',
   ],
   staff: [
     'dashboard.read',
@@ -41,6 +44,10 @@ const rolePermissionsFallback: Record<string, string[]> = {
     'clients.read',
     'clients.write',
     'notifications.read',
+    'notifications.write',
+    'billing.read',
+    'billing.write',
+    'reports.read',
   ],
   client: ['content.read', 'content.write', 'ads.read', 'ads.write', 'dashboard.read', 'leads.read'],
 };

@@ -47,9 +47,20 @@ create table if not exists public.leads (
 create table if not exists public.clients (
   id uuid primary key default gen_random_uuid(),
   name text not null,
+  company_name text,
   email text,
   phone text,
+  alternate_phone text,
+  address_line1 text,
+  address_line2 text,
+  city text,
+  province text,
+  postal_code text,
+  country text,
+  tags text[] not null default '{}'::text[],
   notes text,
+  assignee_id uuid references auth.users(id) on delete set null,
+  archived boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -62,8 +73,92 @@ create table if not exists public.service_jobs (
   service_type text not null,
   status text not null default 'booked',
   scheduled_at timestamptz,
+  assignee_id uuid references auth.users(id) on delete set null,
+  notes text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
+);
+
+-- Ensure new columns exist on older datasets
+alter table if exists public.clients add column if not exists company_name text;
+alter table if exists public.clients add column if not exists alternate_phone text;
+alter table if exists public.clients add column if not exists address_line1 text;
+alter table if exists public.clients add column if not exists address_line2 text;
+alter table if exists public.clients add column if not exists city text;
+alter table if exists public.clients add column if not exists province text;
+alter table if exists public.clients add column if not exists postal_code text;
+alter table if exists public.clients add column if not exists country text;
+alter table if exists public.clients add column if not exists tags text[] not null default '{}'::text[];
+alter table if exists public.clients add column if not exists assignee_id uuid references auth.users(id) on delete set null;
+alter table if exists public.clients add column if not exists archived boolean not null default false;
+
+alter table if exists public.service_jobs add column if not exists assignee_id uuid references auth.users(id) on delete set null;
+alter table if exists public.service_jobs add column if not exists notes text;
+
+-- Customer vehicles
+create table if not exists public.customer_vehicles (
+  id uuid primary key default gen_random_uuid(),
+  client_id uuid not null references public.clients(id) on delete cascade,
+  plate text,
+  vin text,
+  make text,
+  model text,
+  year int,
+  color text,
+  notes text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+-- Job timeline events
+create table if not exists public.job_timeline_events (
+  id uuid primary key default gen_random_uuid(),
+  service_job_id uuid not null references public.service_jobs(id) on delete cascade,
+  lead_id uuid references public.leads(id) on delete set null,
+  client_id uuid references public.clients(id) on delete set null,
+  event_type text not null default 'note',
+  note text,
+  metadata jsonb not null default '{}'::jsonb,
+  created_by uuid references auth.users(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+
+-- Billing / invoice status tracking
+create table if not exists public.billing_records (
+  id uuid primary key default gen_random_uuid(),
+  lead_id uuid references public.leads(id) on delete set null,
+  client_id uuid references public.clients(id) on delete set null,
+  service_job_id uuid references public.service_jobs(id) on delete set null,
+  record_number text,
+  record_type text not null default 'invoice',
+  status text not null default 'draft',
+  currency text not null default 'CAD',
+  subtotal_amount numeric(12,2) not null default 0,
+  tax_amount numeric(12,2) not null default 0,
+  total_amount numeric(12,2) not null default 0,
+  amount_paid numeric(12,2) not null default 0,
+  due_at timestamptz,
+  issued_at timestamptz,
+  paid_at timestamptz,
+  notes text,
+  created_by uuid references auth.users(id) on delete set null,
+  updated_by uuid references auth.users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+-- In-app notifications for staff/admin
+create table if not exists public.in_app_notifications (
+  id uuid primary key default gen_random_uuid(),
+  recipient_user_id uuid not null references auth.users(id) on delete cascade,
+  category text not null default 'system',
+  title text not null,
+  message text not null,
+  entity_type text,
+  entity_id text,
+  metadata jsonb not null default '{}'::jsonb,
+  read_at timestamptz,
+  created_at timestamptz not null default now()
 );
 
 -- Notifications + alerting
@@ -125,6 +220,9 @@ insert into public.role_permissions (role, module, action) values
   ('admin', 'settings', 'write'),
   ('admin', 'notifications', 'read'),
   ('admin', 'notifications', 'write'),
+  ('admin', 'billing', 'read'),
+  ('admin', 'billing', 'write'),
+  ('admin', 'reports', 'read'),
   ('staff', 'dashboard', 'read'),
   ('staff', 'leads', 'read'),
   ('staff', 'leads', 'write'),
@@ -133,6 +231,10 @@ insert into public.role_permissions (role, module, action) values
   ('staff', 'clients', 'read'),
   ('staff', 'clients', 'write'),
   ('staff', 'notifications', 'read'),
+  ('staff', 'notifications', 'write'),
+  ('staff', 'billing', 'read'),
+  ('staff', 'billing', 'write'),
+  ('staff', 'reports', 'read'),
   ('client', 'content', 'read'),
   ('client', 'content', 'write'),
   ('client', 'ads', 'read'),
@@ -142,3 +244,33 @@ on conflict do nothing;
 insert into public.system_settings (key, value)
 values ('enquiry_alerts_enabled', 'true'::jsonb)
 on conflict (key) do nothing;
+
+insert into public.system_settings (key, value)
+values
+  ('ops_v1_enabled', 'true'::jsonb),
+  ('ops_billing_enabled', 'true'::jsonb),
+  ('ops_reports_enabled', 'true'::jsonb)
+on conflict (key) do nothing;
+
+-- Indexes for heavy filters/searches
+create index if not exists idx_leads_status_created_at on public.leads(status, created_at desc);
+create index if not exists idx_leads_assignee_id on public.leads(assignee_id);
+create index if not exists idx_leads_source_page on public.leads(source_page);
+
+create index if not exists idx_service_jobs_status_scheduled_at on public.service_jobs(status, scheduled_at);
+create index if not exists idx_service_jobs_assignee_id on public.service_jobs(assignee_id);
+create index if not exists idx_service_jobs_client_id on public.service_jobs(client_id);
+create index if not exists idx_service_jobs_lead_id on public.service_jobs(lead_id);
+
+create index if not exists idx_clients_archived_created_at on public.clients(archived, created_at desc);
+create index if not exists idx_clients_assignee_id on public.clients(assignee_id);
+
+create index if not exists idx_customer_vehicles_client_id on public.customer_vehicles(client_id);
+create index if not exists idx_job_timeline_service_job_id_created_at on public.job_timeline_events(service_job_id, created_at desc);
+
+create index if not exists idx_billing_records_status_due_at on public.billing_records(status, due_at);
+create index if not exists idx_billing_records_client_id on public.billing_records(client_id);
+create index if not exists idx_billing_records_service_job_id on public.billing_records(service_job_id);
+create index if not exists idx_billing_records_created_at on public.billing_records(created_at desc);
+
+create index if not exists idx_in_app_notifications_recipient_read_created on public.in_app_notifications(recipient_user_id, read_at, created_at desc);

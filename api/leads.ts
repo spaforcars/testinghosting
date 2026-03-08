@@ -3,6 +3,31 @@ import { getAuthContext, hasPermission } from './_lib/auth';
 import { getSupabaseAdmin } from './_lib/supabaseAdmin';
 import { badRequest, forbidden, methodNotAllowed, serverError, unauthorized } from './_lib/http';
 import { writeAuditLog } from './_lib/audit';
+import { isFeatureEnabled } from './_lib/featureFlags';
+
+const allowedLeadStatuses = new Set([
+  'lead',
+  'contacted',
+  'quoted',
+  'booked',
+  'in_service',
+  'completed',
+  'closed_lost',
+]);
+
+const normalizePagination = (req: VercelRequest) => {
+  const rawPage = Number(req.query.page || 1);
+  const rawPageSize = Number(req.query.pageSize || req.query.limit || 50);
+
+  const page = Number.isFinite(rawPage) ? Math.max(1, Math.floor(rawPage)) : 1;
+  const pageSize = Number.isFinite(rawPageSize)
+    ? Math.min(Math.max(Math.floor(rawPageSize), 1), 200)
+    : 50;
+
+  const offset = (page - 1) * pageSize;
+  const to = offset + pageSize - 1;
+  return { page, pageSize, offset, to };
+};
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
@@ -10,10 +35,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const auth = await getAuthContext(req, supabase);
     if (!auth) return unauthorized(res);
 
+    const opsEnabled = await isFeatureEnabled(supabase, 'ops_v1_enabled', true);
+    if (!opsEnabled) {
+      return forbidden(res);
+    }
+
     if (req.method === 'GET') {
       if (!hasPermission(auth, 'leads', 'read')) return forbidden(res);
 
-      let query = supabase.from('leads').select('*').order('created_at', { ascending: false });
+      const { page, pageSize, offset, to } = normalizePagination(req);
+      let query = supabase
+        .from('leads')
+        .select('*', { count: 'exact' })
+        .order('created_at', { ascending: false });
+
       if (req.query.status) {
         query = query.eq('status', String(req.query.status));
       }
@@ -41,16 +76,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           query = query.lte('created_at', parsed.toISOString());
         }
       }
+      if (req.query.search) {
+        const term = String(req.query.search).trim();
+        if (term) {
+          const escaped = term.replace(/,/g, ' ').replace(/%/g, '');
+          query = query.or(
+            `name.ilike.%${escaped}%,email.ilike.%${escaped}%,phone.ilike.%${escaped}%,service_type.ilike.%${escaped}%`
+          );
+        }
+      }
 
-      const requestedLimit = Number(req.query.limit || 200);
-      const safeLimit = Number.isFinite(requestedLimit)
-        ? Math.min(Math.max(requestedLimit, 1), 500)
-        : 200;
-
-      const { data, error } = await query.limit(safeLimit);
+      const { data, error, count } = await query.range(offset, to);
       if (error) throw new Error(error.message);
 
-      return res.status(200).json({ leads: data || [] });
+      const total = count || 0;
+      const totalPages = total > 0 ? Math.ceil(total / pageSize) : 1;
+
+      return res.status(200).json({
+        leads: data || [],
+        pagination: {
+          page,
+          pageSize,
+          total,
+          totalPages,
+        },
+      });
     }
 
     if (req.method === 'POST') {
@@ -61,11 +111,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         phone?: string;
         serviceType?: string;
         sourcePage?: string;
+        status?: string;
+        assigneeId?: string | null;
       };
 
       if (!body.name || !body.email || !body.sourcePage) {
         return badRequest(res, 'name, email and sourcePage are required');
       }
+
+      const status = body.status && allowedLeadStatuses.has(body.status) ? body.status : 'lead';
 
       const { data, error } = await supabase
         .from('leads')
@@ -75,7 +129,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           phone: body.phone || null,
           service_type: body.serviceType || null,
           source_page: body.sourcePage,
-          status: 'lead',
+          status,
+          assignee_id: body.assigneeId || null,
         })
         .select('*')
         .single();

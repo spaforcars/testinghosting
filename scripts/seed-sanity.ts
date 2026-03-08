@@ -32,6 +32,40 @@ const client = createClient({
   perspective: 'published',
 });
 
+const deepWithKeys = (value: unknown): unknown => {
+  if (Array.isArray(value)) {
+    return value.map((item) => {
+      if (item && typeof item === 'object' && !Array.isArray(item)) {
+        const keyed = item as Record<string, unknown>;
+        const nested = deepWithKeys(keyed) as Record<string, unknown>;
+        return {
+          _key:
+            typeof keyed._key === 'string' && keyed._key.trim()
+              ? keyed._key
+              : Math.random().toString(36).slice(2, 12),
+          ...nested,
+        };
+      }
+      return deepWithKeys(item);
+    });
+  }
+
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, child]) => [key, deepWithKeys(child)])
+    );
+  }
+
+  return value;
+};
+
+const asObject = (value: unknown): Record<string, unknown> => {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  return {};
+};
+
 const docs: Array<Record<string, unknown>> = [
   {
     _id: 'siteSettings',
@@ -46,12 +80,15 @@ const docs: Array<Record<string, unknown>> = [
   {
     _id: 'homePage',
     _type: 'homePage',
-    ...defaultHomePageContent,
+    ...(() => {
+      const { promoPlacements, ...rest } = defaultHomePageContent;
+      return asObject(deepWithKeys(rest));
+    })(),
   },
   {
     _id: 'servicesPage',
     _type: 'servicesPage',
-    ...defaultServicesPageContent,
+    ...asObject(deepWithKeys(defaultServicesPageContent)),
   },
   {
     _id: 'fleetPage',
@@ -61,7 +98,7 @@ const docs: Array<Record<string, unknown>> = [
   {
     _id: 'faqPage',
     _type: 'faqPage',
-    ...defaultFaqPageContent,
+    ...asObject(deepWithKeys(defaultFaqPageContent)),
   },
   {
     _id: 'contactPage',
@@ -71,12 +108,12 @@ const docs: Array<Record<string, unknown>> = [
   {
     _id: 'aboutPage',
     _type: 'aboutPage',
-    ...defaultAboutPageContent,
+    ...asObject(deepWithKeys(defaultAboutPageContent)),
   },
   {
     _id: 'galleryPage',
     _type: 'galleryPage',
-    ...defaultGalleryPageContent,
+    ...asObject(deepWithKeys(defaultGalleryPageContent)),
   },
   {
     _id: 'autoRepairPage',
