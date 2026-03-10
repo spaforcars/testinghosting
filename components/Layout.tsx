@@ -26,25 +26,26 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
   return (
     <div className="min-h-screen bg-brand-gray text-brand-black">
-      <div className="border-b border-neutral-800 bg-neutral-950 text-neutral-200">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-2.5 text-xs">
-          <div className="flex flex-wrap items-center gap-4">
-            <span className="inline-flex items-center gap-1.5 text-neutral-300">
-              <Clock className="h-3.5 w-3.5" />
+      {/* ───── Top Bar ───── */}
+      <div className="border-b border-white/[0.06] bg-[#0A0A0A]">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-2">
+          <div className="flex flex-wrap items-center gap-5">
+            <span className="inline-flex items-center gap-1.5 text-[11px] uppercase tracking-[0.1em] text-neutral-400 transition-colors hover:text-brand-mclaren">
+              <Clock className="h-3 w-3" />
               {siteSettings.topBarHours}
             </span>
             <a
               href={`mailto:${siteSettings.contactEmail}`}
-              className="inline-flex items-center gap-1.5 text-neutral-300 transition-colors hover:text-white"
+              className="inline-flex items-center gap-1.5 text-[11px] uppercase tracking-[0.1em] text-neutral-400 transition-colors duration-300 hover:text-brand-mclaren"
             >
-              <Mail className="h-3.5 w-3.5" />
+              <Mail className="h-3 w-3" />
               {siteSettings.contactEmail}
             </a>
             <a
               href={`tel:${siteSettings.contactPhone.replace(/[^\d+]/g, '')}`}
-              className="inline-flex items-center gap-1.5 text-neutral-300 transition-colors hover:text-white"
+              className="inline-flex items-center gap-1.5 text-[11px] uppercase tracking-[0.1em] text-neutral-400 transition-colors duration-300 hover:text-brand-mclaren"
             >
-              <Phone className="h-3.5 w-3.5" />
+              <Phone className="h-3 w-3" />
               {siteSettings.contactPhone}
             </a>
           </div>
@@ -53,7 +54,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
               href={siteSettings.instagramUrl}
               target="_blank"
               rel="noreferrer"
-              className="text-neutral-300 transition-colors hover:text-white"
+              className="text-[11px] uppercase tracking-[0.1em] text-neutral-400 transition-colors duration-300 hover:text-brand-mclaren"
             >
               Instagram
             </a>
@@ -61,7 +62,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
               href={siteSettings.tiktokUrl}
               target="_blank"
               rel="noreferrer"
-              className="text-neutral-300 transition-colors hover:text-white"
+              className="text-[11px] uppercase tracking-[0.1em] text-neutral-400 transition-colors duration-300 hover:text-brand-mclaren"
             >
               TikTok
             </a>
@@ -69,10 +70,11 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         </div>
       </div>
 
-      <header className="sticky top-0 z-40 border-b border-neutral-200 bg-white/95 backdrop-blur">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 lg:h-20">
+      {/* ───── Main Navigation ───── */}
+      <header className="sticky top-0 z-40 border-b border-black/[0.06] bg-white/90 backdrop-blur-xl">
+        <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-4">
           <Link to="/" className="group">
-            <span className="font-display text-2xl font-bold tracking-tight text-neutral-900 transition-colors group-hover:text-brand-mclaren md:text-3xl">
+            <span className="font-display text-2xl font-bold tracking-tight text-neutral-900 transition-colors duration-300 group-hover:text-brand-mclaren">
               {siteSettings.businessName.toUpperCase()}
             </span>
           </Link>
@@ -82,10 +84,10 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
               <Link
                 key={link.path}
                 to={link.path}
-                className={`rounded-md px-3 py-2 text-sm font-semibold uppercase tracking-[0.08em] transition-colors ${
+                className={`relative px-4 py-2 font-sans text-[13px] font-medium uppercase tracking-[0.12em] transition-colors duration-300 after:absolute after:bottom-0 after:left-0 after:h-[2px] after:bg-brand-mclaren after:transition-all after:duration-300 ${
                   isActive(link.path)
-                    ? 'bg-orange-50 text-brand-mclaren'
-                    : 'text-neutral-700 hover:text-brand-mclaren'
+                    ? 'text-brand-mclaren after:w-full'
+                    : 'text-neutral-700 after:w-0 hover:text-brand-mclaren hover:after:w-full'
                 }`}
               >
                 {link.label}
@@ -93,14 +95,14 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             ))}
             <Link
               to={navigation.bookingCtaPath}
-              className="ml-3 rounded-lg bg-brand-mclaren px-5 py-2.5 text-sm font-semibold uppercase tracking-[0.08em] text-white transition-colors hover:bg-orange-600"
+              className="ml-4 rounded-full bg-brand-mclaren px-6 py-2.5 font-sans text-[13px] font-medium uppercase tracking-[0.12em] text-white transition-all duration-300 hover:bg-orange-600 hover:shadow-lg hover:shadow-brand-mclaren/20"
             >
               {navigation.bookingCtaLabel}
             </Link>
           </nav>
 
           <button
-            className="rounded-md p-2 text-neutral-900 transition-colors hover:bg-neutral-100 lg:hidden"
+            className="rounded-md p-2 text-neutral-900 transition-colors duration-300 hover:bg-neutral-100 lg:hidden"
             aria-label="Toggle menu"
             onClick={() => setIsMobileMenuOpen((prev) => !prev)}
           >
@@ -108,35 +110,36 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           </button>
         </div>
 
+        {/* ───── Mobile Menu ───── */}
         {isMobileMenuOpen && (
-          <div className="border-t border-neutral-200 bg-white lg:hidden">
-            <div className="mx-auto max-w-7xl space-y-1 px-4 py-4">
+          <div className="border-t border-black/[0.06] bg-white lg:hidden">
+            <div className="mx-auto max-w-7xl space-y-1 px-4 py-6">
               {primaryLinks.map((link) => (
                 <Link
                   key={link.path}
                   to={link.path}
-                  className={`block rounded-md px-4 py-3 text-sm font-semibold uppercase tracking-[0.08em] transition-colors ${
+                  className={`block px-4 py-3 font-sans text-[13px] font-medium uppercase tracking-[0.12em] transition-colors duration-300 ${
                     isActive(link.path)
-                      ? 'bg-orange-50 text-brand-mclaren'
-                      : 'text-neutral-700 hover:bg-neutral-50 hover:text-brand-mclaren'
+                      ? 'text-brand-mclaren'
+                      : 'text-neutral-700 hover:text-brand-mclaren'
                   }`}
                 >
                   {link.label}
                 </Link>
               ))}
-              <div className="my-3 border-t border-neutral-200" />
+              <div className="my-3 border-t border-black/[0.06]" />
               {secondaryLinks.map((link) => (
                 <Link
                   key={link.path}
                   to={link.path}
-                  className="block rounded-md px-4 py-3 text-sm font-medium uppercase tracking-[0.08em] text-neutral-700 transition-colors hover:bg-neutral-50 hover:text-brand-mclaren"
+                  className="block px-4 py-3 font-sans text-[13px] font-medium uppercase tracking-[0.12em] text-neutral-500 transition-colors duration-300 hover:text-brand-mclaren"
                 >
                   {link.label}
                 </Link>
               ))}
               <Link
                 to={navigation.bookingCtaPath}
-                className="mt-2 block rounded-lg bg-brand-mclaren px-4 py-3 text-center text-sm font-semibold uppercase tracking-[0.08em] text-white transition-colors hover:bg-orange-600"
+                className="mt-4 block rounded-full bg-brand-mclaren px-4 py-3 text-center font-sans text-[13px] font-medium uppercase tracking-[0.12em] text-white transition-colors duration-300 hover:bg-orange-600"
               >
                 {navigation.bookingCtaLabel}
               </Link>
@@ -147,79 +150,159 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
       <main className="flex-1">{children}</main>
 
-      <footer className="mt-20 bg-neutral-950 text-white">
-        <div className="mx-auto grid max-w-7xl grid-cols-1 gap-10 px-4 py-14 md:grid-cols-4">
-          <div>
-            <span className="mb-4 block font-display text-2xl font-bold">
+      {/* ───── Footer ───── */}
+      <footer className="relative mt-20 bg-[#0A0A0A] text-white">
+        {/* Decorative gradient line */}
+        <div className="h-px bg-gradient-to-r from-transparent via-brand-mclaren/40 to-transparent" />
+
+        {/* Grain overlay */}
+        <div className="grain-overlay" />
+
+        {/* Wordmark & tagline */}
+        <div className="relative mx-auto max-w-7xl px-4 pt-16 pb-10">
+          <div className="mb-12">
+            <span className="block font-display text-4xl font-bold text-white">
               {siteSettings.businessName}
             </span>
-            <p className="max-w-xs text-sm leading-relaxed text-neutral-400">
-              Premium detailing and paint protection studio serving Aurora and the greater Toronto area.
+            <p className="mt-2 font-serif text-lg italic text-neutral-400">
+              Premium detailing and paint protection studio
             </p>
           </div>
-          <div>
-            <h4 className="mb-4 text-sm font-semibold uppercase tracking-[0.08em] text-neutral-200">Navigation</h4>
-            <ul className="space-y-2">
-              {primaryLinks.map((link) => (
-                <li key={link.path}>
-                  <Link to={link.path} className="text-sm text-neutral-400 transition-colors hover:text-brand-mclaren">
-                    {link.label}
+
+          {/* 4-column grid */}
+          <div className="grid grid-cols-1 gap-10 sm:grid-cols-2 md:grid-cols-4">
+            {/* Column 1: Navigation */}
+            <div>
+              <h4 className="mb-5 text-[11px] font-semibold uppercase tracking-[0.15em] text-brand-mclaren">
+                Navigation
+              </h4>
+              <ul className="space-y-3">
+                {primaryLinks.map((link) => (
+                  <li key={link.path}>
+                    <Link
+                      to={link.path}
+                      className="text-sm text-neutral-400 transition-colors duration-300 hover:text-white"
+                    >
+                      {link.label}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Column 2: More */}
+            <div>
+              <h4 className="mb-5 text-[11px] font-semibold uppercase tracking-[0.15em] text-brand-mclaren">
+                More
+              </h4>
+              <ul className="space-y-3">
+                {secondaryLinks.map((link) => (
+                  <li key={link.path}>
+                    <Link
+                      to={link.path}
+                      className="text-sm text-neutral-400 transition-colors duration-300 hover:text-white"
+                    >
+                      {link.label}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Column 3: Services Quick Links */}
+            <div>
+              <h4 className="mb-5 text-[11px] font-semibold uppercase tracking-[0.15em] text-brand-mclaren">
+                Services
+              </h4>
+              <ul className="space-y-3">
+                <li>
+                  <Link
+                    to="/services"
+                    className="text-sm text-neutral-400 transition-colors duration-300 hover:text-white"
+                  >
+                    Paint Protection Film
                   </Link>
                 </li>
-              ))}
-            </ul>
-          </div>
-          <div>
-            <h4 className="mb-4 text-sm font-semibold uppercase tracking-[0.08em] text-neutral-200">More</h4>
-            <ul className="space-y-2">
-              {secondaryLinks.map((link) => (
-                <li key={link.path}>
-                  <Link to={link.path} className="text-sm text-neutral-400 transition-colors hover:text-brand-mclaren">
-                    {link.label}
+                <li>
+                  <Link
+                    to="/services"
+                    className="text-sm text-neutral-400 transition-colors duration-300 hover:text-white"
+                  >
+                    Ceramic Coating
                   </Link>
                 </li>
-              ))}
-            </ul>
-          </div>
-          <div>
-            <h4 className="mb-4 text-sm font-semibold uppercase tracking-[0.08em] text-neutral-200">Contact</h4>
-            <div className="space-y-2 text-sm text-neutral-400">
-              <p>{siteSettings.address}</p>
-              <p>
-                <a href={`mailto:${siteSettings.contactEmail}`} className="transition-colors hover:text-brand-mclaren">
-                  {siteSettings.contactEmail}
-                </a>
-              </p>
-              <p>
-                <a href={`tel:${siteSettings.contactPhone.replace(/[^\d+]/g, '')}`} className="transition-colors hover:text-brand-mclaren">
-                  {siteSettings.contactPhone}
-                </a>
-              </p>
-              <div className="flex gap-4 pt-2">
-                <a
-                  href={siteSettings.instagramUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1.5 transition-colors hover:text-brand-mclaren"
-                >
-                  Instagram <ArrowUpRight className="h-3.5 w-3.5" />
-                </a>
-                <a
-                  href={siteSettings.tiktokUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1.5 transition-colors hover:text-brand-mclaren"
-                >
-                  TikTok <ArrowUpRight className="h-3.5 w-3.5" />
-                </a>
+                <li>
+                  <Link
+                    to="/services"
+                    className="text-sm text-neutral-400 transition-colors duration-300 hover:text-white"
+                  >
+                    Full Detail
+                  </Link>
+                </li>
+                <li>
+                  <Link
+                    to="/services"
+                    className="text-sm text-neutral-400 transition-colors duration-300 hover:text-white"
+                  >
+                    Window Tint
+                  </Link>
+                </li>
+              </ul>
+            </div>
+
+            {/* Column 4: Contact */}
+            <div>
+              <h4 className="mb-5 text-[11px] font-semibold uppercase tracking-[0.15em] text-brand-mclaren">
+                Contact
+              </h4>
+              <div className="space-y-3 text-sm text-neutral-400">
+                <p className="leading-relaxed">{siteSettings.address}</p>
+                <p>
+                  <a
+                    href={`mailto:${siteSettings.contactEmail}`}
+                    className="transition-colors duration-300 hover:text-white"
+                  >
+                    {siteSettings.contactEmail}
+                  </a>
+                </p>
+                <p>
+                  <a
+                    href={`tel:${siteSettings.contactPhone.replace(/[^\d+]/g, '')}`}
+                    className="transition-colors duration-300 hover:text-white"
+                  >
+                    {siteSettings.contactPhone}
+                  </a>
+                </p>
               </div>
             </div>
           </div>
+
+          {/* Social links row */}
+          <div className="mt-12 flex flex-wrap gap-3">
+            <a
+              href={siteSettings.instagramUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-2 rounded-full border border-white/10 px-5 py-2 text-sm text-neutral-400 transition-all duration-300 hover:border-brand-mclaren hover:text-brand-mclaren"
+            >
+              Instagram <ArrowUpRight className="h-3.5 w-3.5" />
+            </a>
+            <a
+              href={siteSettings.tiktokUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-2 rounded-full border border-white/10 px-5 py-2 text-sm text-neutral-400 transition-all duration-300 hover:border-brand-mclaren hover:text-brand-mclaren"
+            >
+              TikTok <ArrowUpRight className="h-3.5 w-3.5" />
+            </a>
+          </div>
         </div>
-        <div className="border-t border-neutral-800">
-          <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-2 px-4 py-4 text-xs text-neutral-500 md:flex-row">
+
+        {/* Bottom bar */}
+        <div className="border-t border-white/[0.06]">
+          <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-2 px-4 py-5 text-xs text-neutral-500 md:flex-row">
             <span>&copy; {new Date().getFullYear()} {siteSettings.businessName} Inc. All rights reserved.</span>
-            <span>{siteSettings.footerTagline}</span>
+            <span className="text-neutral-600">{siteSettings.footerTagline}</span>
           </div>
         </div>
       </footer>

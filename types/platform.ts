@@ -7,6 +7,10 @@ export type LeadStatus =
   | 'completed'
   | 'closed_lost';
 
+export type LeadUiStatus = 'new_lead' | 'booked' | 'service_completed' | 'closed_lost';
+export type JobUiStatus = 'scheduled' | 'completed' | 'cancelled';
+export type JobPaymentStatus = 'unpaid' | 'paid';
+
 export type NotificationStatus = 'queued' | 'sent' | 'failed';
 
 export interface Enquiry {
@@ -30,7 +34,11 @@ export interface Lead {
   service_type?: string | null;
   source_page: string;
   status: LeadStatus;
+  ui_status?: LeadUiStatus;
   assignee_id?: string | null;
+  vehicle_make?: string | null;
+  vehicle_model?: string | null;
+  vehicle_year?: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -85,9 +93,16 @@ export interface ServiceJob {
   client_name: string;
   service_type: string;
   status: string;
+  ui_status?: JobUiStatus;
   scheduled_at?: string | null;
   assignee_id?: string | null;
   notes?: string | null;
+  vehicle_make?: string | null;
+  vehicle_model?: string | null;
+  vehicle_year?: number | null;
+  estimated_amount?: number | null;
+  payment_status?: JobPaymentStatus | null;
+  completed_at?: string | null;
   created_at: string;
   updated_at: string;
 }

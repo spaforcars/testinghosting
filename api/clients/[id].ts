@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from '../_lib/supabaseAdmin';
 import { badRequest, forbidden, methodNotAllowed, serverError, unauthorized } from '../_lib/http';
 import { writeAuditLog } from '../_lib/audit';
 import { isFeatureEnabled } from '../_lib/featureFlags';
+import { mapJobToUiStatus, mapLeadToUiStatus } from '../_lib/dashboardStatus';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
@@ -68,13 +69,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (billingResult.error) throw new Error(billingResult.error.message);
 
       const linkedLeadIds = new Set((jobsResult.data || []).map((job) => job.lead_id).filter(Boolean));
-      const relatedLeads = (leadsResult.data || []).filter((lead) => linkedLeadIds.has(lead.id));
+      const relatedLeads = (leadsResult.data || []).filter((lead) => {
+        if (linkedLeadIds.has(lead.id)) return true;
+        if (clientResult.data.email && lead.email === clientResult.data.email) return true;
+        if (clientResult.data.phone && lead.phone === clientResult.data.phone) return true;
+        return false;
+      });
 
       return res.status(200).json({
         client: clientResult.data,
         vehicles: vehiclesResult.data || [],
-        serviceJobs: jobsResult.data || [],
-        leads: relatedLeads,
+        serviceJobs: (jobsResult.data || []).map((job) => ({
+          ...job,
+          ui_status: mapJobToUiStatus(job.status),
+        })),
+        leads: relatedLeads.map((lead) => ({
+          ...lead,
+          ui_status: mapLeadToUiStatus(lead.status),
+        })),
         timelineEvents: timelineResult.data || [],
         billingRecords: billingResult.data || [],
       });

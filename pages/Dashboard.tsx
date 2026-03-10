@@ -1,800 +1,1173 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  Bell,
+  CalendarDays,
+  CircleDollarSign,
+  LayoutDashboard,
+  RefreshCw,
+  Users,
+  Wrench,
+} from 'lucide-react';
 import AuthGate from '../components/AuthGate';
-import Button from '../components/Button';
-import { apiRequest, ApiError } from '../lib/apiClient';
+import { ApiError, apiRequest } from '../lib/apiClient';
 import type {
-  BillingRecord,
   ClientRecord,
+  CustomerVehicle,
   InAppNotification,
-  JobTimelineEvent,
+  JobPaymentStatus,
+  JobUiStatus,
   Lead,
-  LeadStatus,
+  LeadUiStatus,
   ServiceJob,
 } from '../types/platform';
 
-type TabKey = 'overview' | 'leads' | 'jobs' | 'customers' | 'billing' | 'notifications' | 'reports';
+type DashboardTab =
+  | 'overview'
+  | 'leads'
+  | 'jobs'
+  | 'customers'
+  | 'payments'
+  | 'notifications'
+  | 'reports';
 
-interface PaginationState {
+type AuthMeResponse = {
+  userId: string;
+  email?: string;
+  role: string;
+  permissions: string[];
+};
+
+type MetricsResponse = {
+  newLeadsToday: number;
+  newCustomersToday: number;
+  newCustomersOrLeadsToday: number;
+  jobsScheduledToday: number;
+  activeCustomers: number;
+  expectedRevenueToday: number;
+  unreadNotifications: number;
+};
+
+type Pagination = {
   page: number;
   pageSize: number;
   total: number;
   totalPages: number;
-}
+};
 
-interface UserLite {
-  id: string;
-  full_name?: string;
-}
+type LeadsResponse = {
+  leads: Lead[];
+  pagination: Pagination;
+};
 
-interface ClientDetailsResponse {
+type JobsResponse = {
+  serviceJobs: ServiceJob[];
+  pagination: Pagination;
+};
+
+type ClientsResponse = {
+  clients: ClientRecord[];
+  pagination: Pagination;
+};
+
+type NotificationsResponse = {
+  notifications: InAppNotification[];
+};
+
+type ClientDetailsResponse = {
   client: ClientRecord;
-  vehicles: Array<{ id: string; make?: string; model?: string; year?: number; plate?: string }>;
+  vehicles: CustomerVehicle[];
   serviceJobs: ServiceJob[];
   leads: Lead[];
-  timelineEvents: JobTimelineEvent[];
-  billingRecords: BillingRecord[];
-}
+  timelineEvents: Array<{
+    id: string;
+    event_type: string;
+    note?: string | null;
+    created_at: string;
+  }>;
+  billingRecords: Array<Record<string, unknown>>;
+};
 
-interface ReportsResponse {
-  summary: Record<string, number | string>;
-  leadsByStatus: Record<string, number>;
+type ReportsResponse = {
+  summary: {
+    dateFrom: string;
+    dateTo: string;
+    weeklyEstimatedRevenue: number;
+    monthlyEstimatedRevenue: number;
+    vehiclesDetailedCount: number;
+    completedJobsCount: number;
+  };
   jobsByStatus: Record<string, number>;
-  billingByStatus: Record<string, number>;
   csvRows: {
-    leads: Array<Record<string, unknown>>;
     jobs: Array<Record<string, unknown>>;
+    leads: Array<Record<string, unknown>>;
     billing: Array<Record<string, unknown>>;
   };
-}
+};
 
-const tabs: Array<{ key: TabKey; label: string }> = [
-  { key: 'overview', label: 'Overview' },
-  { key: 'leads', label: 'Leads Kanban' },
-  { key: 'jobs', label: 'Jobs Calendar' },
-  { key: 'customers', label: 'Customers CRM' },
-  { key: 'billing', label: 'Billing Tracker' },
-  { key: 'notifications', label: 'Notifications' },
-  { key: 'reports', label: 'Reports' },
+type LeadFormState = {
+  name: string;
+  phone: string;
+  email: string;
+  serviceType: string;
+  vehicleMake: string;
+  vehicleModel: string;
+  vehicleYear: string;
+  status: LeadUiStatus;
+};
+
+type JobFormState = {
+  clientId: string;
+  clientName: string;
+  serviceType: string;
+  scheduledAt: string;
+  vehicleMake: string;
+  vehicleModel: string;
+  vehicleYear: string;
+  estimatedAmount: string;
+  paymentStatus: JobPaymentStatus;
+  notes: string;
+};
+
+const tabs: Array<{ id: DashboardTab; label: string; icon: React.ComponentType<{ className?: string }> }> = [
+  { id: 'overview', label: 'Daily Overview', icon: LayoutDashboard },
+  { id: 'leads', label: 'New Customers / Leads', icon: Users },
+  { id: 'jobs', label: 'Appointments / Jobs', icon: CalendarDays },
+  { id: 'customers', label: 'Customer Database', icon: Users },
+  { id: 'payments', label: 'Payments', icon: CircleDollarSign },
+  { id: 'notifications', label: 'Notifications', icon: Bell },
+  { id: 'reports', label: 'Reports', icon: Wrench },
 ];
 
-const leadStatuses: LeadStatus[] = [
-  'lead',
-  'contacted',
-  'quoted',
-  'booked',
-  'in_service',
-  'completed',
-  'closed_lost',
-];
-const jobStatuses = ['booked', 'in_service', 'completed', 'cancelled'];
-const billingStatuses = ['draft', 'sent', 'partially_paid', 'paid', 'overdue', 'void'];
+const emptyMetrics: MetricsResponse = {
+  newLeadsToday: 0,
+  newCustomersToday: 0,
+  newCustomersOrLeadsToday: 0,
+  jobsScheduledToday: 0,
+  activeCustomers: 0,
+  expectedRevenueToday: 0,
+  unreadNotifications: 0,
+};
 
-const defaultPagination: PaginationState = { page: 1, pageSize: 25, total: 0, totalPages: 1 };
+const emptyLeadForm: LeadFormState = {
+  name: '',
+  phone: '',
+  email: '',
+  serviceType: '',
+  vehicleMake: '',
+  vehicleModel: '',
+  vehicleYear: '',
+  status: 'new_lead',
+};
 
-const query = (params: Record<string, string | number | boolean | null | undefined>) => {
-  const sp = new URLSearchParams();
-  Object.entries(params).forEach(([k, v]) => {
-    if (v === null || typeof v === 'undefined' || v === '') return;
-    sp.set(k, String(v));
+const emptyJobForm: JobFormState = {
+  clientId: '',
+  clientName: '',
+  serviceType: '',
+  scheduledAt: '',
+  vehicleMake: '',
+  vehicleModel: '',
+  vehicleYear: '',
+  estimatedAmount: '',
+  paymentStatus: 'unpaid',
+  notes: '',
+};
+
+const qs = (params: Record<string, string | number | undefined>) => {
+  const search = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value === undefined || value === '') return;
+    search.set(key, String(value));
   });
-  const str = sp.toString();
-  return str ? `?${str}` : '';
+  const output = search.toString();
+  return output ? `?${output}` : '';
 };
 
-const fmt = (value?: string | null) => {
+const currency = (value?: number | null) =>
+  new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD' }).format(Number(value || 0));
+
+const fmtDateTime = (value?: string | null) => {
   if (!value) return '-';
-  const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? '-' : d.toLocaleString();
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+  return date.toLocaleString();
 };
 
-const downloadCsv = (filename: string, rows: Array<Record<string, unknown>>) => {
+const vehicleLabel = (vehicle: {
+  vehicle_year?: number | null;
+  vehicle_make?: string | null;
+  vehicle_model?: string | null;
+  year?: number | null;
+  make?: string | null;
+  model?: string | null;
+}) => {
+  const year = vehicle.vehicle_year ?? vehicle.year;
+  const make = vehicle.vehicle_make ?? vehicle.make;
+  const model = vehicle.vehicle_model ?? vehicle.model;
+  const label = [year, make, model].filter(Boolean).join(' ');
+  return label || '-';
+};
+
+const jobStatusLabel: Record<JobUiStatus, string> = {
+  scheduled: 'Scheduled',
+  completed: 'Completed',
+  cancelled: 'Cancelled',
+};
+
+const badgeClass = (status: string) => {
+  const classes: Record<string, string> = {
+    new_lead: 'bg-blue-50 text-blue-700 border-blue-200',
+    booked: 'bg-amber-50 text-amber-700 border-amber-200',
+    service_completed: 'bg-green-50 text-green-700 border-green-200',
+    closed_lost: 'bg-red-50 text-red-700 border-red-200',
+    scheduled: 'bg-amber-50 text-amber-700 border-amber-200',
+    completed: 'bg-green-50 text-green-700 border-green-200',
+    cancelled: 'bg-gray-100 text-gray-600 border-gray-200',
+    unpaid: 'bg-red-50 text-red-700 border-red-200',
+    paid: 'bg-green-50 text-green-700 border-green-200',
+  };
+  return classes[status] || 'bg-gray-100 text-gray-700 border-gray-200';
+};
+
+const StatusBadge: React.FC<{ status: string; label?: string }> = ({ status, label }) => (
+  <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${badgeClass(status)}`}>
+    {label || status}
+  </span>
+);
+
+const exportCsv = (filename: string, rows: Array<Record<string, unknown>>) => {
   if (!rows.length) return;
-  const keys = Object.keys(rows[0]);
-  const toCell = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
-  const csv = [keys.join(','), ...rows.map((r) => keys.map((k) => toCell(r[k])).join(','))].join('\n');
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const headers = Object.keys(rows[0]);
+  const csv = [
+    headers.join(','),
+    ...rows.map((row) =>
+      headers
+        .map((header) => `"${String(row[header] ?? '').replace(/"/g, '""')}"`)
+        .join(',')
+    ),
+  ].join('\n');
+
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.click();
   URL.revokeObjectURL(url);
 };
 
 const Dashboard: React.FC = () => {
-  const [tab, setTab] = useState<TabKey>('overview');
+  const [activeTab, setActiveTab] = useState<DashboardTab>('overview');
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [busyId, setBusyId] = useState<string | null>(null);
-
-  const [metrics, setMetrics] = useState<Record<string, number>>({});
-  const [assignees, setAssignees] = useState<UserLite[]>([]);
-
+  const [auth, setAuth] = useState<AuthMeResponse | null>(null);
+  const [metrics, setMetrics] = useState<MetricsResponse>(emptyMetrics);
   const [leads, setLeads] = useState<Lead[]>([]);
-  const [leadsPagination, setLeadsPagination] = useState<PaginationState>(defaultPagination);
-  const [leadFilters, setLeadFilters] = useState({
-    page: 1,
-    pageSize: 40,
-    status: '',
-    search: '',
-    serviceType: '',
-    assigneeId: '',
-  });
-
   const [jobs, setJobs] = useState<ServiceJob[]>([]);
-  const [jobsPagination, setJobsPagination] = useState<PaginationState>(defaultPagination);
-  const [jobFilters, setJobFilters] = useState({
-    page: 1,
-    pageSize: 40,
-    status: '',
-    search: '',
-    assigneeId: '',
-    scheduledFrom: '',
-    scheduledTo: '',
-  });
-  const [calendarDate, setCalendarDate] = useState(new Date().toISOString().slice(0, 10));
-  const [jobView, setJobView] = useState<'week' | 'list'>('week');
-  const [selectedJobId, setSelectedJobId] = useState<string>('');
-  const [timeline, setTimeline] = useState<JobTimelineEvent[]>([]);
-  const [timelineNote, setTimelineNote] = useState('');
-
   const [clients, setClients] = useState<ClientRecord[]>([]);
-  const [clientsPagination, setClientsPagination] = useState<PaginationState>(defaultPagination);
-  const [clientFilters, setClientFilters] = useState({
-    page: 1,
-    pageSize: 25,
-    search: '',
-    assigneeId: '',
-    archived: false,
-  });
-  const [selectedClientId, setSelectedClientId] = useState<string>('');
-  const [clientDetails, setClientDetails] = useState<ClientDetailsResponse | null>(null);
-
-  const [billing, setBilling] = useState<BillingRecord[]>([]);
-  const [billingPagination, setBillingPagination] = useState<PaginationState>(defaultPagination);
-  const [billingFilters, setBillingFilters] = useState({
-    page: 1,
-    pageSize: 25,
-    status: '',
-    clientId: '',
-  });
-
   const [notifications, setNotifications] = useState<InAppNotification[]>([]);
-  const [unreadOnly, setUnreadOnly] = useState(false);
-
   const [reports, setReports] = useState<ReportsResponse | null>(null);
-  const [reportFilters, setReportFilters] = useState({ dateFrom: '', dateTo: '' });
+  const [leadPagination, setLeadPagination] = useState<Pagination | null>(null);
+  const [jobPagination, setJobPagination] = useState<Pagination | null>(null);
+  const [clientPagination, setClientPagination] = useState<Pagination | null>(null);
+  const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
+  const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
+  const [selectedClientDetails, setSelectedClientDetails] = useState<ClientDetailsResponse | null>(null);
+  const [customerNotes, setCustomerNotes] = useState('');
+  const [leadForm, setLeadForm] = useState<LeadFormState>(emptyLeadForm);
+  const [jobForm, setJobForm] = useState<JobFormState>(emptyJobForm);
+  const [submittingLead, setSubmittingLead] = useState(false);
+  const [submittingJob, setSubmittingJob] = useState(false);
+  const [savingCustomer, setSavingCustomer] = useState(false);
+  const [search, setSearch] = useState('');
 
-  const fail = (e: unknown, fallback: string) => setError(e instanceof ApiError ? e.message : fallback);
+  const selectedLead = useMemo(
+    () => leads.find((lead) => lead.id === selectedLeadId) || null,
+    [leads, selectedLeadId]
+  );
 
-  const loadOverview = async () => {
-    try {
-      const [m, u] = await Promise.all([
-        apiRequest<Record<string, number>>('/api/dashboard/metrics'),
-        apiRequest<{ users: UserLite[] }>('/api/users'),
-      ]);
-      setMetrics(m || {});
-      setAssignees(u.users || []);
-    } catch (e) {
-      fail(e, 'Failed to load overview');
-    }
-  };
+  const filteredClients = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    if (!term) return clients;
+    return clients.filter((client) =>
+      [client.name, client.phone, client.email, client.company_name]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(term))
+    );
+  }, [clients, search]);
 
-  const loadLeads = async () => {
-    try {
-      const r = await apiRequest<{ leads: Lead[]; pagination: PaginationState }>(
-        `/api/leads${query(leadFilters)}`
-      );
-      setLeads(r.leads || []);
-      setLeadsPagination(r.pagination || defaultPagination);
-    } catch (e) {
-      fail(e, 'Failed to load leads');
-    }
-  };
+  const upcomingNotifications = useMemo(
+    () => notifications.filter((item) => !item.read_at),
+    [notifications]
+  );
 
-  const loadJobs = async () => {
-    try {
-      const r = await apiRequest<{ serviceJobs: ServiceJob[]; pagination: PaginationState }>(
-        `/api/service-jobs${query(jobFilters)}`
-      );
-      setJobs(r.serviceJobs || []);
-      setJobsPagination(r.pagination || defaultPagination);
-    } catch (e) {
-      fail(e, 'Failed to load jobs');
-    }
-  };
-  const loadTimeline = async (jobId: string) => {
-    if (!jobId) return;
-    try {
-      const r = await apiRequest<{ events: JobTimelineEvent[] }>(`/api/service-jobs/${jobId}/timeline`);
-      setTimeline(r.events || []);
-    } catch (e) {
-      fail(e, 'Failed to load timeline');
-    }
-  };
-
-  const loadClients = async () => {
-    try {
-      const r = await apiRequest<{ clients: ClientRecord[]; pagination: PaginationState }>(
-        `/api/clients${query(clientFilters)}`
-      );
-      setClients(r.clients || []);
-      setClientsPagination(r.pagination || defaultPagination);
-    } catch (e) {
-      fail(e, 'Failed to load clients');
-    }
-  };
-
-  const loadClientDetails = async (clientId: string) => {
-    if (!clientId) return;
-    try {
-      const r = await apiRequest<ClientDetailsResponse>(`/api/clients/${clientId}`);
-      setClientDetails(r);
-    } catch (e) {
-      fail(e, 'Failed to load client profile');
-    }
-  };
-
-  const loadBilling = async () => {
-    try {
-      const r = await apiRequest<{ records: BillingRecord[]; pagination: PaginationState }>(
-        `/api/billing-records${query(billingFilters)}`
-      );
-      setBilling(r.records || []);
-      setBillingPagination(r.pagination || defaultPagination);
-    } catch (e) {
-      fail(e, 'Failed to load billing');
-    }
-  };
-
-  const loadNotifications = async () => {
-    try {
-      const r = await apiRequest<{ notifications: InAppNotification[] }>(
-        `/api/notifications/in-app${query({ unreadOnly, limit: 200 })}`
-      );
-      setNotifications(r.notifications || []);
-    } catch (e) {
-      fail(e, 'Failed to load notifications');
-    }
-  };
-
-  const loadReports = async () => {
-    try {
-      const r = await apiRequest<ReportsResponse>(`/api/reports/summary${query(reportFilters)}`);
-      setReports(r);
-    } catch (e) {
-      fail(e, 'Failed to load reports');
-    }
-  };
-
-  useEffect(() => {
-    loadOverview();
+  const loadClientDetails = useCallback(async (clientId: string) => {
+    const data = await apiRequest<ClientDetailsResponse>(`/api/clients/${clientId}`);
+    setSelectedClientDetails(data);
+    setCustomerNotes(data.client.notes || '');
   }, []);
 
-  useEffect(() => {
-    if (tab === 'leads') loadLeads();
-    if (tab === 'jobs') loadJobs();
-    if (tab === 'customers') loadClients();
-    if (tab === 'billing') loadBilling();
-    if (tab === 'notifications') loadNotifications();
-    if (tab === 'reports') loadReports();
-  }, [tab]);
+  const loadDashboard = useCallback(async () => {
+    setError(null);
+    const [authData, metricsData, leadsData, jobsData, clientsData, notificationsData, reportsData] =
+      await Promise.all([
+        apiRequest<AuthMeResponse>('/api/auth/me'),
+        apiRequest<MetricsResponse>('/api/dashboard/metrics'),
+        apiRequest<LeadsResponse>(`/api/leads${qs({ page: 1, pageSize: 50 })}`),
+        apiRequest<JobsResponse>(`/api/service-jobs${qs({ page: 1, pageSize: 50 })}`),
+        apiRequest<ClientsResponse>(`/api/clients${qs({ page: 1, pageSize: 50 })}`),
+        apiRequest<NotificationsResponse>('/api/notifications/in-app?limit=25'),
+        apiRequest<ReportsResponse>('/api/reports/summary'),
+      ]);
 
-  useEffect(() => {
-    if (tab === 'leads') loadLeads();
-  }, [leadFilters.page]);
+    setAuth(authData);
+    setMetrics(metricsData);
+    setLeads(leadsData.leads);
+    setJobs(jobsData.serviceJobs);
+    setClients(clientsData.clients);
+    setNotifications(notificationsData.notifications);
+    setReports(reportsData);
+    setLeadPagination(leadsData.pagination);
+    setJobPagination(jobsData.pagination);
+    setClientPagination(clientsData.pagination);
 
-  useEffect(() => {
-    if (tab === 'jobs') loadJobs();
-  }, [jobFilters.page]);
-
-  useEffect(() => {
-    if (tab === 'customers') loadClients();
-  }, [clientFilters.page]);
-
-  useEffect(() => {
-    if (tab === 'billing') loadBilling();
-  }, [billingFilters.page]);
-
-  useEffect(() => {
-    if (tab === 'notifications') loadNotifications();
-  }, [unreadOnly]);
-
-  useEffect(() => {
-    if (selectedClientId) loadClientDetails(selectedClientId);
+    if (!selectedClientId && clientsData.clients.length) {
+      setSelectedClientId(clientsData.clients[0].id);
+    }
   }, [selectedClientId]);
 
-  const groupedLeads = useMemo(() => {
-    const map = {} as Record<LeadStatus, Lead[]>;
-    leadStatuses.forEach((s) => {
-      map[s] = [];
-    });
-    leads.forEach((lead) => {
-      if (map[lead.status]) map[lead.status].push(lead);
-    });
-    return map;
-  }, [leads]);
+  useEffect(() => {
+    let mounted = true;
 
-  const weekDays = useMemo(() => {
-    const base = new Date(`${calendarDate}T00:00:00`);
-    const mondayOffset = (base.getDay() + 6) % 7;
-    const monday = new Date(base);
-    monday.setDate(base.getDate() - mondayOffset);
-    return Array.from({ length: 7 }).map((_, i) => {
-      const d = new Date(monday);
-      d.setDate(monday.getDate() + i);
-      return d;
-    });
-  }, [calendarDate]);
+    const run = async () => {
+      try {
+        if (!mounted) return;
+        setLoading(true);
+        await loadDashboard();
+      } catch (err) {
+        const message = err instanceof ApiError ? err.message : 'Failed to load dashboard';
+        if (mounted) setError(message);
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
 
-  const jobsByDate = useMemo(() => {
-    const map: Record<string, ServiceJob[]> = {};
-    jobs.forEach((job) => {
-      const key = job.scheduled_at ? new Date(job.scheduled_at).toISOString().slice(0, 10) : 'unscheduled';
-      if (!map[key]) map[key] = [];
-      map[key].push(job);
-    });
-    return map;
-  }, [jobs]);
+    run();
+    return () => {
+      mounted = false;
+    };
+  }, [loadDashboard]);
 
-  const updateLead = async (id: string, payload: Record<string, unknown>) => {
+  useEffect(() => {
+    if (!selectedClientId) return;
+    loadClientDetails(selectedClientId).catch((err) => {
+      const message = err instanceof ApiError ? err.message : 'Failed to load customer details';
+      setError(message);
+    });
+  }, [loadClientDetails, selectedClientId]);
+
+  const refreshAll = async () => {
     try {
-      setBusyId(id);
-      await apiRequest(`/api/leads/${id}`, { method: 'PATCH', body: JSON.stringify(payload) });
-      await Promise.all([loadLeads(), loadOverview()]);
-    } catch (e) {
-      fail(e, 'Failed to update lead');
+      setRefreshing(true);
+      await loadDashboard();
+      if (selectedClientId) {
+        await loadClientDetails(selectedClientId);
+      }
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Refresh failed';
+      setError(message);
     } finally {
-      setBusyId(null);
+      setRefreshing(false);
     }
   };
 
-  const convertLead = async (lead: Lead) => {
+  const prepareJobFromLead = (lead: Lead) => {
+    setSelectedLeadId(lead.id);
+    setActiveTab('jobs');
+    setJobForm({
+      clientId: '',
+      clientName: lead.name,
+      serviceType: lead.service_type || '',
+      scheduledAt: '',
+      vehicleMake: lead.vehicle_make || '',
+      vehicleModel: lead.vehicle_model || '',
+      vehicleYear: lead.vehicle_year ? String(lead.vehicle_year) : '',
+      estimatedAmount: '',
+      paymentStatus: 'unpaid',
+      notes: '',
+    });
+  };
+
+  const submitLead = async (event: React.FormEvent) => {
+    event.preventDefault();
     try {
-      setBusyId(lead.id);
-      await apiRequest(`/api/leads/${lead.id}/convert`, {
+      setSubmittingLead(true);
+      setError(null);
+      await apiRequest('/api/leads', {
         method: 'POST',
         body: JSON.stringify({
-          createClient: true,
-          createServiceJob: true,
-          serviceJob: { serviceType: lead.service_type || 'General Service', assigneeId: lead.assignee_id || null },
+          name: leadForm.name,
+          phone: leadForm.phone,
+          email: leadForm.email || undefined,
+          serviceType: leadForm.serviceType,
+          sourcePage: 'dashboard',
+          status: leadForm.status,
+          vehicleMake: leadForm.vehicleMake || null,
+          vehicleModel: leadForm.vehicleModel || null,
+          vehicleYear: leadForm.vehicleYear ? Number(leadForm.vehicleYear) : null,
         }),
       });
-      await Promise.all([loadLeads(), loadJobs(), loadClients(), loadOverview()]);
-      setTab('jobs');
-    } catch (e) {
-      fail(e, 'Failed to convert lead');
+      setLeadForm(emptyLeadForm);
+      await refreshAll();
+      setActiveTab('leads');
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Failed to create lead');
     } finally {
-      setBusyId(null);
+      setSubmittingLead(false);
     }
   };
 
-  const updateJob = async (id: string, payload: Record<string, unknown>) => {
+  const updateLeadStatus = async (leadId: string, status: LeadUiStatus) => {
     try {
-      setBusyId(id);
-      await apiRequest('/api/service-jobs', { method: 'PATCH', body: JSON.stringify({ id, ...payload }) });
-      await Promise.all([loadJobs(), loadOverview()]);
-      if (selectedJobId === id) await loadTimeline(id);
-    } catch (e) {
-      fail(e, 'Failed to update job');
-    } finally {
-      setBusyId(null);
-    }
-  };
-
-  const addTimelineEvent = async () => {
-    if (!selectedJobId || !timelineNote.trim()) return;
-    try {
-      setBusyId(selectedJobId);
-      await apiRequest(`/api/service-jobs/${selectedJobId}/timeline`, {
-        method: 'POST',
-        body: JSON.stringify({ eventType: 'note', note: timelineNote.trim() }),
+      await apiRequest(`/api/leads/${leadId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status }),
       });
-      setTimelineNote('');
-      await loadTimeline(selectedJobId);
-    } catch (e) {
-      fail(e, 'Failed to add timeline event');
-    } finally {
-      setBusyId(null);
+      await refreshAll();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Failed to update lead');
     }
   };
 
-  const markNotificationRead = async (id: string) => {
+  const submitJob = async (event: React.FormEvent) => {
+    event.preventDefault();
     try {
-      setBusyId(id);
-      await apiRequest(`/api/notifications/in-app/${id}/read`, { method: 'PATCH' });
-      await Promise.all([loadNotifications(), loadOverview()]);
-    } catch (e) {
-      fail(e, 'Failed to mark notification read');
+      setSubmittingJob(true);
+      setError(null);
+
+      if (selectedLead) {
+        await apiRequest(`/api/leads/${selectedLead.id}/convert`, {
+          method: 'POST',
+          body: JSON.stringify({
+            client: {
+              name: selectedLead.name,
+              email: selectedLead.email || undefined,
+              phone: selectedLead.phone || undefined,
+              notes: selectedLead.service_type ? `Requested: ${selectedLead.service_type}` : undefined,
+            },
+            serviceJob: {
+              clientName: jobForm.clientName || selectedLead.name,
+              serviceType: jobForm.serviceType || selectedLead.service_type || 'Detailing',
+              status: 'scheduled',
+              scheduledAt: jobForm.scheduledAt ? new Date(jobForm.scheduledAt).toISOString() : null,
+              notes: jobForm.notes || null,
+              vehicleMake: jobForm.vehicleMake || null,
+              vehicleModel: jobForm.vehicleModel || null,
+              vehicleYear: jobForm.vehicleYear ? Number(jobForm.vehicleYear) : null,
+              estimatedAmount: jobForm.estimatedAmount ? Number(jobForm.estimatedAmount) : 0,
+              paymentStatus: jobForm.paymentStatus,
+            },
+          }),
+        });
+        setSelectedLeadId(null);
+      } else {
+        await apiRequest('/api/service-jobs', {
+          method: 'POST',
+          body: JSON.stringify({
+            clientId: jobForm.clientId || null,
+            clientName: jobForm.clientName,
+            serviceType: jobForm.serviceType,
+            status: 'scheduled',
+            scheduledAt: jobForm.scheduledAt ? new Date(jobForm.scheduledAt).toISOString() : null,
+            vehicleMake: jobForm.vehicleMake || null,
+            vehicleModel: jobForm.vehicleModel || null,
+            vehicleYear: jobForm.vehicleYear ? Number(jobForm.vehicleYear) : null,
+            estimatedAmount: jobForm.estimatedAmount ? Number(jobForm.estimatedAmount) : 0,
+            paymentStatus: jobForm.paymentStatus,
+            notes: jobForm.notes || null,
+          }),
+        });
+      }
+
+      setJobForm(emptyJobForm);
+      await refreshAll();
+      setActiveTab('jobs');
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Failed to save appointment');
     } finally {
-      setBusyId(null);
+      setSubmittingJob(false);
     }
   };
 
-  const updateBillingStatus = async (id: string, status: string) => {
+  const updateJob = async (jobId: string, updates: Partial<{ status: JobUiStatus; paymentStatus: JobPaymentStatus }>) => {
     try {
-      setBusyId(id);
-      await apiRequest('/api/billing-records', { method: 'PATCH', body: JSON.stringify({ id, status }) });
-      await Promise.all([loadBilling(), loadOverview()]);
-    } catch (e) {
-      fail(e, 'Failed to update billing');
-    } finally {
-      setBusyId(null);
+      await apiRequest('/api/service-jobs', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          id: jobId,
+          status: updates.status,
+          paymentStatus: updates.paymentStatus,
+        }),
+      });
+      await refreshAll();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Failed to update job');
     }
   };
+
+  const saveCustomerNotes = async () => {
+    if (!selectedClientId) return;
+    try {
+      setSavingCustomer(true);
+      await apiRequest(`/api/clients/${selectedClientId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ notes: customerNotes }),
+      });
+      await refreshAll();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Failed to save customer');
+    } finally {
+      setSavingCustomer(false);
+    }
+  };
+
+  const markNotificationRead = async (notificationId: string) => {
+    try {
+      await apiRequest(`/api/notifications/in-app/${notificationId}/read`, { method: 'PATCH' });
+      await refreshAll();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Failed to mark notification as read');
+    }
+  };
+
+  const sortedJobs = useMemo(
+    () =>
+      [...jobs]
+        .filter((job) => job.ui_status !== 'cancelled')
+        .sort((a, b) => (a.scheduled_at || '').localeCompare(b.scheduled_at || '')),
+    [jobs]
+  );
 
   return (
-    <div className="min-h-screen bg-brand-gray px-4 py-12">
-      <AuthGate title="Operations Dashboard">
-        <div className="mx-auto max-w-7xl space-y-6">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h1 className="font-display text-4xl font-bold uppercase text-brand-black">Operations Dashboard</h1>
-              <p className="mt-2 text-sm text-gray-600">
-                Internal backend console: leads, jobs, customers, billing, notifications and reports.
-              </p>
-            </div>
-            <Button variant="outline" onClick={loadOverview}>Refresh KPIs</Button>
+    <AuthGate title="Operations Dashboard">
+      <div className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
+        <div className="flex flex-col gap-4 rounded-[28px] border border-neutral-200 bg-white p-6 shadow-[0_24px_80px_rgba(15,23,42,0.08)] lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-brand-mclaren">Internal Operations</p>
+            <h1 className="mt-2 font-display text-4xl font-semibold uppercase text-brand-black">Service Dashboard</h1>
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-gray-600">
+              Intake, appointments, customer history, payment follow-up, notifications, and simple revenue tracking in one place.
+            </p>
           </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm">
+              <div className="font-semibold text-brand-black">{auth?.email || 'Signed in'}</div>
+              <div className="text-gray-500">Role: {auth?.role || '-'}</div>
+            </div>
+            <button
+              type="button"
+              onClick={refreshAll}
+              className="inline-flex items-center gap-2 rounded-2xl bg-brand-mclaren px-4 py-3 text-sm font-semibold text-white transition hover:bg-brand-mclaren-dark"
+            >
+              <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+              Refresh
+            </button>
+          </div>
+        </div>
 
-          {error && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
+        {error && (
+          <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {error}
+          </div>
+        )}
 
-          <div className="rounded-2xl border border-neutral-200 bg-white p-3 shadow-sm">
+        {loading ? (
+          <div className="rounded-3xl border border-neutral-200 bg-white p-8 text-sm text-gray-600">Loading dashboard...</div>
+        ) : (
+          <>
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <MetricCard label="New Leads / Customers Today" value={metrics.newCustomersOrLeadsToday} helper={`${metrics.newLeadsToday} leads, ${metrics.newCustomersToday} customers`} />
+              <MetricCard label="Jobs Scheduled Today" value={metrics.jobsScheduledToday} helper="Booked appointments on today’s calendar" />
+              <MetricCard label="Active Customers" value={metrics.activeCustomers} helper="Clients with scheduled or in-service work" />
+              <MetricCard label="Expected Revenue Today" value={currency(metrics.expectedRevenueToday)} helper={`${metrics.unreadNotifications} unread notifications`} accent />
+            </div>
+
             <div className="flex flex-wrap gap-2">
-              {tabs.map((t) => (
-                <button
-                  key={t.key}
-                  onClick={() => setTab(t.key)}
-                  className={`rounded-lg px-4 py-2 text-xs font-semibold uppercase tracking-[0.08em] ${
-                    tab === t.key ? 'bg-brand-black text-white' : 'border border-neutral-300 bg-white text-neutral-700'
-                  }`}
-                >
-                  {t.label}
-                </button>
-              ))}
+              {tabs.map((tab) => {
+                const Icon = tab.icon;
+                const isActive = tab.id === activeTab;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition ${
+                      isActive
+                        ? 'border-brand-mclaren bg-brand-mclaren text-white'
+                        : 'border-neutral-200 bg-white text-gray-700 hover:border-brand-mclaren hover:text-brand-mclaren'
+                    }`}
+                  >
+                    <Icon className="h-4 w-4" />
+                    {tab.label}
+                  </button>
+                );
+              })}
             </div>
-          </div>
 
-          {tab === 'overview' && (
-            <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
-              {[
-                ['Total Leads', metrics.totalLeads || 0],
-                ['New Leads', metrics.newLeads || 0],
-                ['In Service', metrics.inService || 0],
-                ['Completed', metrics.completed || 0],
-                ['Unread Notifications', metrics.unreadNotifications || 0],
-                ['Outstanding Billing', `$${Number(metrics.billingOutstanding || 0).toFixed(2)}`],
-              ].map(([label, value]) => (
-                <div key={String(label)} className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
-                  <p className="text-xs font-semibold uppercase tracking-[0.08em] text-gray-500">{label}</p>
-                  <p className="mt-2 text-2xl font-bold text-brand-black">{value}</p>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {tab === 'leads' && (
-            <div className="space-y-4">
-              <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
-                <div className="grid gap-3 md:grid-cols-5">
-                  <input className="rounded-lg border border-neutral-300 px-3 py-2 text-sm" placeholder="Search" value={leadFilters.search} onChange={(e) => setLeadFilters((p) => ({ ...p, page: 1, search: e.target.value }))} />
-                  <select className="rounded-lg border border-neutral-300 px-3 py-2 text-sm" value={leadFilters.status} onChange={(e) => setLeadFilters((p) => ({ ...p, page: 1, status: e.target.value }))}>
-                    <option value="">All statuses</option>
-                    {leadStatuses.map((s) => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}
-                  </select>
-                  <input className="rounded-lg border border-neutral-300 px-3 py-2 text-sm" placeholder="Service type" value={leadFilters.serviceType} onChange={(e) => setLeadFilters((p) => ({ ...p, page: 1, serviceType: e.target.value }))} />
-                  <select className="rounded-lg border border-neutral-300 px-3 py-2 text-sm" value={leadFilters.assigneeId} onChange={(e) => setLeadFilters((p) => ({ ...p, page: 1, assigneeId: e.target.value }))}>
-                    <option value="">All assignees</option>
-                    {assignees.map((u) => <option key={u.id} value={u.id}>{u.full_name || u.id}</option>)}
-                  </select>
-                  <Button onClick={loadLeads}>Apply</Button>
-                </div>
-              </div>
-              <div className="grid gap-4 xl:grid-cols-4">
-                {leadStatuses.map((status) => (
-                  <div key={status} className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
-                    <p className="mb-3 text-xs font-semibold uppercase tracking-[0.08em] text-gray-500">
-                      {status.replace('_', ' ')} ({groupedLeads[status].length})
-                    </p>
-                    <div className="space-y-2">
-                      {groupedLeads[status].map((lead) => (
-                        <div key={lead.id} className="rounded-lg border border-neutral-200 bg-neutral-50 p-3">
-                          <p className="font-semibold text-brand-black">{lead.name}</p>
-                          <p className="text-xs text-gray-500">{lead.email}</p>
-                          <p className="mt-1 text-xs text-gray-600">{lead.service_type || 'General enquiry'}</p>
-                          <div className="mt-2 grid gap-2">
-                            <select className="rounded border border-neutral-300 px-2 py-1 text-xs" value={lead.status} disabled={busyId === lead.id} onChange={(e) => updateLead(lead.id, { status: e.target.value })}>
-                              {leadStatuses.map((s) => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}
-                            </select>
-                            <select className="rounded border border-neutral-300 px-2 py-1 text-xs" value={lead.assignee_id || ''} disabled={busyId === lead.id} onChange={(e) => updateLead(lead.id, { assigneeId: e.target.value || null })}>
-                              <option value="">Unassigned</option>
-                              {assignees.map((u) => <option key={u.id} value={u.id}>{u.full_name || u.id}</option>)}
-                            </select>
-                            <Button variant="outline" className="px-2 py-1 text-xs" disabled={busyId === lead.id} onClick={() => convertLead(lead)}>
-                              Convert
-                            </Button>
+            {activeTab === 'overview' && (
+              <div className="grid gap-6 lg:grid-cols-[1.25fr_0.95fr]">
+                <Panel title="Today’s Job List" subtitle="Quick view of the appointment queue">
+                  <div className="space-y-3">
+                    {sortedJobs.length ? (
+                      sortedJobs.slice(0, 8).map((job) => (
+                        <div key={job.id} className="rounded-2xl border border-neutral-200 px-4 py-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <div className="font-semibold text-brand-black">{job.client_name}</div>
+                              <div className="mt-1 text-sm text-gray-600">{job.service_type}</div>
+                              <div className="mt-1 text-xs text-gray-500">
+                                {vehicleLabel(job)} | {fmtDateTime(job.scheduled_at)}
+                              </div>
+                            </div>
+                            <StatusBadge status={job.ui_status || 'scheduled'} label={jobStatusLabel[job.ui_status || 'scheduled']} />
                           </div>
                         </div>
-                      ))}
-                      {!groupedLeads[status].length && <p className="text-xs text-gray-400">No leads.</p>}
-                    </div>
+                      ))
+                    ) : (
+                      <EmptyState message="No appointments scheduled yet." />
+                    )}
                   </div>
-                ))}
-              </div>
-              <div className="flex items-center justify-between rounded-2xl border border-neutral-200 bg-white px-4 py-3 shadow-sm">
-                <p className="text-sm text-gray-600">Page {leadsPagination.page} / {leadsPagination.totalPages}</p>
-                <div className="flex gap-2">
-                  <Button variant="outline" disabled={leadFilters.page <= 1} onClick={() => setLeadFilters((p) => ({ ...p, page: p.page - 1 }))}>Prev</Button>
-                  <Button variant="outline" disabled={leadFilters.page >= leadsPagination.totalPages} onClick={() => setLeadFilters((p) => ({ ...p, page: p.page + 1 }))}>Next</Button>
-                </div>
-              </div>
-            </div>
-          )}
+                </Panel>
 
-          {tab === 'jobs' && (
-            <div className="grid gap-6 xl:grid-cols-[2fr_1fr]">
-              <div className="space-y-4">
-                <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
-                  <div className="grid gap-3 md:grid-cols-6">
-                    <input className="rounded-lg border border-neutral-300 px-3 py-2 text-sm" placeholder="Search" value={jobFilters.search} onChange={(e) => setJobFilters((p) => ({ ...p, page: 1, search: e.target.value }))} />
-                    <select className="rounded-lg border border-neutral-300 px-3 py-2 text-sm" value={jobFilters.status} onChange={(e) => setJobFilters((p) => ({ ...p, page: 1, status: e.target.value }))}>
-                      <option value="">All statuses</option>
-                      {jobStatuses.map((s) => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}
-                    </select>
-                    <select className="rounded-lg border border-neutral-300 px-3 py-2 text-sm" value={jobFilters.assigneeId} onChange={(e) => setJobFilters((p) => ({ ...p, page: 1, assigneeId: e.target.value }))}>
-                      <option value="">All assignees</option>
-                      {assignees.map((u) => <option key={u.id} value={u.id}>{u.full_name || u.id}</option>)}
-                    </select>
-                    <input type="date" className="rounded-lg border border-neutral-300 px-3 py-2 text-sm" value={calendarDate} onChange={(e) => setCalendarDate(e.target.value)} />
-                    <div className="flex gap-2">
-                      <Button variant={jobView === 'week' ? 'primary' : 'outline'} onClick={() => setJobView('week')}>Week</Button>
-                      <Button variant={jobView === 'list' ? 'primary' : 'outline'} onClick={() => setJobView('list')}>List</Button>
-                    </div>
-                    <Button onClick={loadJobs}>Apply</Button>
-                  </div>
-                </div>
-                {jobView === 'week' ? (
-                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                    {weekDays.map((d) => {
-                      const key = d.toISOString().slice(0, 10);
-                      const items = jobsByDate[key] || [];
-                      return (
-                        <div key={key} className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
-                          <p className="text-xs font-semibold uppercase tracking-[0.08em] text-gray-500">{d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}</p>
-                          <div className="mt-2 space-y-2">
-                            {items.map((job) => (
-                              <button key={job.id} onClick={() => { setSelectedJobId(job.id); loadTimeline(job.id); }} className="w-full rounded-lg border border-neutral-200 bg-neutral-50 p-2 text-left">
-                                <p className="text-sm font-semibold text-brand-black">{job.client_name}</p>
-                                <p className="text-xs text-gray-600">{job.service_type}</p>
-                              </button>
-                            ))}
-                            {!items.length && <p className="text-xs text-gray-400">No jobs.</p>}
+                <Panel title="Unread Notifications" subtitle="Bookings and appointment reminders">
+                  <div className="space-y-3">
+                    {upcomingNotifications.length ? (
+                      upcomingNotifications.slice(0, 8).map((notification) => (
+                        <div key={notification.id} className="rounded-2xl border border-neutral-200 px-4 py-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <div className="font-semibold text-brand-black">{notification.title}</div>
+                              <div className="mt-1 text-sm text-gray-600">{notification.message}</div>
+                              <div className="mt-1 text-xs text-gray-500">{fmtDateTime(notification.created_at)}</div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => markNotificationRead(notification.id)}
+                              className="rounded-full border border-neutral-200 px-3 py-1 text-xs font-semibold text-gray-600 hover:border-brand-mclaren hover:text-brand-mclaren"
+                            >
+                              Mark read
+                            </button>
                           </div>
                         </div>
-                      );
-                    })}
+                      ))
+                    ) : (
+                      <EmptyState message="No unread notifications." />
+                    )}
                   </div>
-                ) : (
-                  <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
-                    <div className="space-y-2">
-                      {jobs.map((job) => (
-                        <div key={job.id} className="grid gap-2 rounded-lg border border-neutral-200 p-3 md:grid-cols-[1.2fr_1fr_1fr_auto]">
-                          <div>
-                            <p className="font-semibold text-brand-black">{job.client_name}</p>
-                            <p className="text-xs text-gray-500">{job.service_type} | {fmt(job.scheduled_at)}</p>
-                          </div>
-                          <select className="rounded border border-neutral-300 px-2 py-1 text-xs" value={job.status} disabled={busyId === job.id} onChange={(e) => updateJob(job.id, { status: e.target.value })}>
-                            {[...new Set([...jobStatuses, job.status])].map((s) => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}
-                          </select>
-                          <select className="rounded border border-neutral-300 px-2 py-1 text-xs" value={job.assignee_id || ''} disabled={busyId === job.id} onChange={(e) => updateJob(job.id, { assigneeId: e.target.value || null })}>
-                            <option value="">Unassigned</option>
-                            {assignees.map((u) => <option key={u.id} value={u.id}>{u.full_name || u.id}</option>)}
-                          </select>
-                          <Button variant="outline" onClick={() => { setSelectedJobId(job.id); loadTimeline(job.id); }}>Timeline</Button>
-                        </div>
-                      ))}
-                      {!jobs.length && <p className="text-sm text-gray-500">No jobs found.</p>}
-                    </div>
-                  </div>
-                )}
-                <div className="flex items-center justify-between rounded-2xl border border-neutral-200 bg-white px-4 py-3 shadow-sm">
-                  <p className="text-sm text-gray-600">Page {jobsPagination.page} / {jobsPagination.totalPages}</p>
-                  <div className="flex gap-2">
-                    <Button variant="outline" disabled={jobFilters.page <= 1} onClick={() => setJobFilters((p) => ({ ...p, page: p.page - 1 }))}>Prev</Button>
-                    <Button variant="outline" disabled={jobFilters.page >= jobsPagination.totalPages} onClick={() => setJobFilters((p) => ({ ...p, page: p.page + 1 }))}>Next</Button>
-                  </div>
-                </div>
+                </Panel>
               </div>
-              <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
-                <h3 className="font-display text-xl font-semibold uppercase text-brand-black">Timeline</h3>
-                {!selectedJobId && <p className="mt-3 text-sm text-gray-500">Select a job to view timeline.</p>}
-                {selectedJobId && (
-                  <div className="mt-3 space-y-2">
-                    <textarea className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm" rows={3} placeholder="Add note" value={timelineNote} onChange={(e) => setTimelineNote(e.target.value)} />
-                    <Button className="w-full" disabled={!timelineNote.trim() || busyId === selectedJobId} onClick={addTimelineEvent}>Add Event</Button>
-                    <div className="max-h-[520px] space-y-2 overflow-y-auto pr-1 custom-scrollbar">
-                      {timeline.map((ev) => (
-                        <div key={ev.id} className="rounded-lg border border-neutral-200 p-3">
-                          <p className="text-xs font-semibold uppercase tracking-[0.08em] text-brand-mclaren">{ev.event_type}</p>
-                          {ev.note && <p className="mt-1 text-sm text-gray-700">{ev.note}</p>}
-                          <p className="text-xs text-gray-500">{fmt(ev.created_at)}</p>
-                        </div>
-                      ))}
-                      {!timeline.length && <p className="text-sm text-gray-500">No events.</p>}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
+            )}
 
-          {tab === 'customers' && (
-            <div className="grid gap-6 xl:grid-cols-[1fr_2fr]">
-              <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
-                <div className="grid gap-2">
-                  <input className="rounded border border-neutral-300 px-3 py-2 text-sm" placeholder="Search customer" value={clientFilters.search} onChange={(e) => setClientFilters((p) => ({ ...p, page: 1, search: e.target.value }))} />
-                  <select className="rounded border border-neutral-300 px-3 py-2 text-sm" value={clientFilters.assigneeId} onChange={(e) => setClientFilters((p) => ({ ...p, page: 1, assigneeId: e.target.value }))}>
-                    <option value="">All assignees</option>
-                    {assignees.map((u) => <option key={u.id} value={u.id}>{u.full_name || u.id}</option>)}
-                  </select>
-                  <Button onClick={loadClients}>Apply</Button>
-                </div>
-                <div className="mt-4 max-h-[640px] space-y-2 overflow-y-auto pr-1 custom-scrollbar">
-                  {clients.map((client) => (
-                    <button key={client.id} onClick={() => setSelectedClientId(client.id)} className={`w-full rounded-lg border p-3 text-left ${selectedClientId === client.id ? 'border-brand-mclaren bg-orange-50' : 'border-neutral-200 bg-white'}`}>
-                      <p className="font-semibold text-brand-black">{client.name}</p>
-                      <p className="text-xs text-gray-600">{client.email || '-'} | {client.phone || '-'}</p>
+            {activeTab === 'leads' && (
+              <div className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
+                <Panel title="Add New Lead" subtitle="Capture intake details from calls, walk-ins, or messages">
+                  <form className="space-y-4" onSubmit={submitLead}>
+                    <Input label="Customer Name" value={leadForm.name} onChange={(value) => setLeadForm((current) => ({ ...current, name: value }))} required />
+                    <Input label="Phone Number" value={leadForm.phone} onChange={(value) => setLeadForm((current) => ({ ...current, phone: value }))} required />
+                    <Input label="Email (optional)" value={leadForm.email} onChange={(value) => setLeadForm((current) => ({ ...current, email: value }))} />
+                    <Input label="Service Requested" value={leadForm.serviceType} onChange={(value) => setLeadForm((current) => ({ ...current, serviceType: value }))} required />
+                    <div className="grid gap-4 sm:grid-cols-3">
+                      <Input label="Vehicle Make" value={leadForm.vehicleMake} onChange={(value) => setLeadForm((current) => ({ ...current, vehicleMake: value }))} />
+                      <Input label="Vehicle Model" value={leadForm.vehicleModel} onChange={(value) => setLeadForm((current) => ({ ...current, vehicleModel: value }))} />
+                      <Input label="Vehicle Year" value={leadForm.vehicleYear} onChange={(value) => setLeadForm((current) => ({ ...current, vehicleYear: value }))} />
+                    </div>
+                    <Select
+                      label="Lead Status"
+                      value={leadForm.status}
+                      onChange={(value) => setLeadForm((current) => ({ ...current, status: value as LeadUiStatus }))}
+                      options={[
+                        { value: 'new_lead', label: 'New Lead' },
+                        { value: 'booked', label: 'Booked' },
+                        { value: 'service_completed', label: 'Service Completed' },
+                      ]}
+                    />
+                    <button
+                      type="submit"
+                      disabled={submittingLead}
+                      className="w-full rounded-2xl bg-brand-mclaren px-4 py-3 text-sm font-semibold text-white transition hover:bg-brand-mclaren-dark disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {submittingLead ? 'Saving Lead...' : 'Save Lead'}
                     </button>
-                  ))}
-                  {!clients.length && <p className="text-sm text-gray-500">No customers found.</p>}
-                </div>
-                <div className="mt-3 flex items-center justify-between text-xs text-gray-500">
-                  <span>Page {clientsPagination.page} / {clientsPagination.totalPages}</span>
-                  <div className="flex gap-2">
-                    <button className="rounded border border-neutral-300 px-2 py-1" disabled={clientFilters.page <= 1} onClick={() => setClientFilters((p) => ({ ...p, page: p.page - 1 }))}>Prev</button>
-                    <button className="rounded border border-neutral-300 px-2 py-1" disabled={clientFilters.page >= clientsPagination.totalPages} onClick={() => setClientFilters((p) => ({ ...p, page: p.page + 1 }))}>Next</button>
-                  </div>
-                </div>
-              </div>
-              <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
-                {!clientDetails && <p className="text-sm text-gray-500">Select a customer to inspect profile, vehicles, history and linked records.</p>}
-                {clientDetails && (
-                  <div className="space-y-4">
-                    <h3 className="font-display text-2xl font-semibold uppercase text-brand-black">{clientDetails.client.name}</h3>
-                    <div className="grid gap-3 md:grid-cols-3">
-                      <div className="rounded-lg border border-neutral-200 p-3"><p className="text-xs uppercase tracking-[0.08em] text-gray-500">Vehicles</p><p className="mt-1 text-2xl font-bold text-brand-black">{clientDetails.vehicles.length}</p></div>
-                      <div className="rounded-lg border border-neutral-200 p-3"><p className="text-xs uppercase tracking-[0.08em] text-gray-500">Linked Jobs</p><p className="mt-1 text-2xl font-bold text-brand-black">{clientDetails.serviceJobs.length}</p></div>
-                      <div className="rounded-lg border border-neutral-200 p-3"><p className="text-xs uppercase tracking-[0.08em] text-gray-500">Linked Leads</p><p className="mt-1 text-2xl font-bold text-brand-black">{clientDetails.leads.length}</p></div>
-                    </div>
-                    <div className="rounded-xl border border-neutral-200 p-4">
-                      <p className="text-xs font-semibold uppercase tracking-[0.08em] text-gray-500">Recent Vehicles</p>
-                      <div className="mt-2 space-y-2">
-                        {clientDetails.vehicles.slice(0, 8).map((v) => (
-                          <div key={v.id} className="rounded-lg border border-neutral-200 bg-neutral-50 p-2 text-sm">
-                            {(v.make || '-') + ' ' + (v.model || '-') + ' ' + (v.year || '')} | Plate: {v.plate || '-'}
-                          </div>
-                        ))}
-                        {!clientDetails.vehicles.length && <p className="text-sm text-gray-500">No vehicles.</p>}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
+                  </form>
+                </Panel>
 
-          {tab === 'billing' && (
-            <div className="space-y-4">
-              <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
-                <div className="grid gap-3 md:grid-cols-4">
-                  <select className="rounded border border-neutral-300 px-3 py-2 text-sm" value={billingFilters.status} onChange={(e) => setBillingFilters((p) => ({ ...p, page: 1, status: e.target.value }))}>
-                    <option value="">All statuses</option>
-                    {billingStatuses.map((s) => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}
-                  </select>
-                  <select className="rounded border border-neutral-300 px-3 py-2 text-sm" value={billingFilters.clientId} onChange={(e) => setBillingFilters((p) => ({ ...p, page: 1, clientId: e.target.value }))}>
-                    <option value="">All clients</option>
-                    {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
-                  <Button onClick={loadBilling}>Apply</Button>
-                </div>
+                <Panel title="Lead Queue" subtitle={`Showing ${leadPagination?.total || leads.length} recent leads`}>
+                  <DataTable
+                    columns={['Customer', 'Phone', 'Vehicle', 'Service', 'Status', 'Actions']}
+                    rows={leads.map((lead) => (
+                      <tr key={lead.id} className="border-t border-neutral-100">
+                        <td className="px-4 py-3">
+                          <div className="font-semibold text-brand-black">{lead.name}</div>
+                          <div className="text-xs text-gray-500">{fmtDateTime(lead.created_at)}</div>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-600">{lead.phone || '-'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600">{vehicleLabel(lead)}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600">{lead.service_type || '-'}</td>
+                        <td className="px-4 py-3">
+                          <select
+                            value={lead.ui_status || 'new_lead'}
+                            onChange={(event) => updateLeadStatus(lead.id, event.target.value as LeadUiStatus)}
+                            className="rounded-xl border border-neutral-200 px-3 py-2 text-sm"
+                          >
+                            <option value="new_lead">New Lead</option>
+                            <option value="booked">Booked</option>
+                            <option value="service_completed">Service Completed</option>
+                            <option value="closed_lost">Closed Lost</option>
+                          </select>
+                        </td>
+                        <td className="px-4 py-3">
+                          <button
+                            type="button"
+                            onClick={() => prepareJobFromLead(lead)}
+                            className="rounded-xl border border-brand-mclaren px-3 py-2 text-sm font-semibold text-brand-mclaren hover:bg-brand-mclaren hover:text-white"
+                          >
+                            Book Appointment
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  />
+                </Panel>
               </div>
-              <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
-                <div className="space-y-2">
-                  {billing.map((b) => {
-                    const outstanding = Number(b.total_amount || 0) - Number(b.amount_paid || 0);
-                    return (
-                      <div key={b.id} className="grid gap-2 rounded-lg border border-neutral-200 p-3 md:grid-cols-[1.3fr_1fr_1fr_auto]">
-                        <div>
-                          <p className="font-semibold text-brand-black">{b.record_number || b.id.slice(0, 8)}</p>
-                          <p className="text-xs text-gray-500">{b.record_type} | Due {fmt(b.due_at)}</p>
-                        </div>
-                        <p className="text-sm text-gray-700">Total ${Number(b.total_amount || 0).toFixed(2)}</p>
-                        <p className="text-sm text-gray-700">Outstanding ${outstanding.toFixed(2)}</p>
-                        <select className="rounded border border-neutral-300 px-2 py-1 text-xs" value={b.status} disabled={busyId === b.id} onChange={(e) => updateBillingStatus(b.id, e.target.value)}>
-                          {billingStatuses.map((s) => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}
-                        </select>
-                      </div>
-                    );
-                  })}
-                  {!billing.length && <p className="text-sm text-gray-500">No billing records found.</p>}
-                </div>
-              </div>
-            </div>
-          )}
+            )}
 
-          {tab === 'notifications' && (
-            <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
-              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                <h3 className="font-display text-2xl font-semibold uppercase text-brand-black">In-App Notifications</h3>
-                <div className="flex items-center gap-2">
-                  <label className="flex items-center gap-2 text-sm text-gray-600">
-                    <input type="checkbox" checked={unreadOnly} onChange={(e) => setUnreadOnly(e.target.checked)} />
-                    Unread only
-                  </label>
-                  <Button onClick={loadNotifications}>Refresh</Button>
-                </div>
-              </div>
-              <div className="space-y-2">
-                {notifications.map((n) => (
-                  <div key={n.id} className={`rounded-lg border p-3 ${n.read_at ? 'border-neutral-200 bg-white' : 'border-brand-mclaren bg-orange-50'}`}>
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div>
-                        <p className="font-semibold text-brand-black">{n.title}</p>
-                        <p className="text-sm text-gray-600">{n.message}</p>
-                        <p className="text-xs text-gray-500">{fmt(n.created_at)}</p>
-                      </div>
-                      {!n.read_at && (
-                        <Button variant="outline" disabled={busyId === n.id} onClick={() => markNotificationRead(n.id)}>
-                          Mark Read
-                        </Button>
+            {activeTab === 'jobs' && (
+              <div className="grid gap-6 lg:grid-cols-[0.92fr_1.08fr]">
+                <Panel
+                  title={selectedLead ? 'Convert Lead to Appointment' : 'Create Appointment'}
+                  subtitle={selectedLead ? `Booking ${selectedLead.name}` : 'Add a scheduled job directly'}
+                >
+                  {selectedLead && (
+                    <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                      Booking from lead: <span className="font-semibold">{selectedLead.name}</span>. Saving this form will create the client record and first service job.
+                    </div>
+                  )}
+                  <form className="space-y-4" onSubmit={submitJob}>
+                    <Input label="Customer Name" value={jobForm.clientName} onChange={(value) => setJobForm((current) => ({ ...current, clientName: value }))} required />
+                    <Input label="Service Booked" value={jobForm.serviceType} onChange={(value) => setJobForm((current) => ({ ...current, serviceType: value }))} required />
+                    <Input label="Appointment Date & Time" type="datetime-local" value={jobForm.scheduledAt} onChange={(value) => setJobForm((current) => ({ ...current, scheduledAt: value }))} />
+                    <div className="grid gap-4 sm:grid-cols-3">
+                      <Input label="Vehicle Make" value={jobForm.vehicleMake} onChange={(value) => setJobForm((current) => ({ ...current, vehicleMake: value }))} />
+                      <Input label="Vehicle Model" value={jobForm.vehicleModel} onChange={(value) => setJobForm((current) => ({ ...current, vehicleModel: value }))} />
+                      <Input label="Vehicle Year" value={jobForm.vehicleYear} onChange={(value) => setJobForm((current) => ({ ...current, vehicleYear: value }))} />
+                    </div>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <Input label="Estimated Amount (CAD)" value={jobForm.estimatedAmount} onChange={(value) => setJobForm((current) => ({ ...current, estimatedAmount: value }))} />
+                      <Select
+                        label="Payment Status"
+                        value={jobForm.paymentStatus}
+                        onChange={(value) => setJobForm((current) => ({ ...current, paymentStatus: value as JobPaymentStatus }))}
+                        options={[
+                          { value: 'unpaid', label: 'Unpaid' },
+                          { value: 'paid', label: 'Paid' },
+                        ]}
+                      />
+                    </div>
+                    <TextArea label="Notes" value={jobForm.notes} onChange={(value) => setJobForm((current) => ({ ...current, notes: value }))} rows={4} />
+                    <div className="flex flex-wrap gap-3">
+                      <button
+                        type="submit"
+                        disabled={submittingJob}
+                        className="rounded-2xl bg-brand-mclaren px-4 py-3 text-sm font-semibold text-white transition hover:bg-brand-mclaren-dark disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {submittingJob ? 'Saving Appointment...' : 'Save Appointment'}
+                      </button>
+                      {selectedLead && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedLeadId(null);
+                            setJobForm(emptyJobForm);
+                          }}
+                          className="rounded-2xl border border-neutral-200 px-4 py-3 text-sm font-semibold text-gray-700 hover:border-brand-mclaren hover:text-brand-mclaren"
+                        >
+                          Clear Lead
+                        </button>
                       )}
                     </div>
-                  </div>
-                ))}
-                {!notifications.length && <p className="text-sm text-gray-500">No notifications.</p>}
-              </div>
-            </div>
-          )}
+                  </form>
+                </Panel>
 
-          {tab === 'reports' && (
-            <div className="space-y-4">
-              <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
-                <div className="grid gap-3 md:grid-cols-3">
-                  <input type="date" className="rounded border border-neutral-300 px-3 py-2 text-sm" value={reportFilters.dateFrom} onChange={(e) => setReportFilters((p) => ({ ...p, dateFrom: e.target.value }))} />
-                  <input type="date" className="rounded border border-neutral-300 px-3 py-2 text-sm" value={reportFilters.dateTo} onChange={(e) => setReportFilters((p) => ({ ...p, dateTo: e.target.value }))} />
-                  <Button onClick={loadReports}>Run Report</Button>
-                </div>
-              </div>
-              {reports && (
-                <>
-                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-                    {[
-                      ['Total Leads', reports.summary.totalLeads || 0],
-                      ['Qualified Leads', reports.summary.qualifiedLeads || 0],
-                      ['Completed Jobs', reports.summary.completedJobs || 0],
-                      ['Overdue', reports.summary.overdueCount || 0],
-                      ['Outstanding', `$${Number(reports.summary.outstandingAmount || 0).toFixed(2)}`],
-                    ].map(([k, v]) => (
-                      <div key={String(k)} className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
-                        <p className="text-xs uppercase tracking-[0.08em] text-gray-500">{k}</p>
-                        <p className="mt-1 text-2xl font-bold text-brand-black">{v}</p>
-                      </div>
+                <Panel title="Appointment Queue" subtitle={`Showing ${jobPagination?.total || jobs.length} recent jobs`}>
+                  <DataTable
+                    columns={['Customer', 'Vehicle', 'Service', 'Appointment', 'Status', 'Payment', 'Amount']}
+                    rows={jobs.map((job) => (
+                      <tr key={job.id} className="border-t border-neutral-100">
+                        <td className="px-4 py-3">
+                          <div className="font-semibold text-brand-black">{job.client_name}</div>
+                          <div className="text-xs text-gray-500">{job.notes || 'No notes'}</div>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-600">{vehicleLabel(job)}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600">{job.service_type}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600">{fmtDateTime(job.scheduled_at)}</td>
+                        <td className="px-4 py-3">
+                          <select
+                            value={job.ui_status || 'scheduled'}
+                            onChange={(event) => updateJob(job.id, { status: event.target.value as JobUiStatus })}
+                            className="rounded-xl border border-neutral-200 px-3 py-2 text-sm"
+                          >
+                            <option value="scheduled">Scheduled</option>
+                            <option value="completed">Completed</option>
+                            <option value="cancelled">Cancelled</option>
+                          </select>
+                        </td>
+                        <td className="px-4 py-3">
+                          <select
+                            value={job.payment_status || 'unpaid'}
+                            onChange={(event) => updateJob(job.id, { paymentStatus: event.target.value as JobPaymentStatus })}
+                            className="rounded-xl border border-neutral-200 px-3 py-2 text-sm"
+                          >
+                            <option value="unpaid">Unpaid</option>
+                            <option value="paid">Paid</option>
+                          </select>
+                        </td>
+                        <td className="px-4 py-3 text-sm font-semibold text-brand-black">{currency(job.estimated_amount)}</td>
+                      </tr>
                     ))}
+                  />
+                </Panel>
+              </div>
+            )}
+
+            {activeTab === 'customers' && (
+              <div className="grid gap-6 lg:grid-cols-[0.72fr_1.28fr]">
+                <Panel title="Customer List" subtitle={`Showing ${clientPagination?.total || clients.length} active customers`}>
+                  <div className="mb-4">
+                    <Input label="Search Customers" value={search} onChange={setSearch} placeholder="Search by name, phone, or email" />
                   </div>
-                  <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
-                    <div className="flex flex-wrap gap-2">
-                      <Button variant="outline" onClick={() => downloadCsv('leads-report.csv', reports.csvRows.leads)}>Leads CSV</Button>
-                      <Button variant="outline" onClick={() => downloadCsv('jobs-report.csv', reports.csvRows.jobs)}>Jobs CSV</Button>
-                      <Button variant="outline" onClick={() => downloadCsv('billing-report.csv', reports.csvRows.billing)}>Billing CSV</Button>
+                  <div className="space-y-2">
+                    {filteredClients.length ? (
+                      filteredClients.map((client) => (
+                        <button
+                          key={client.id}
+                          type="button"
+                          onClick={() => setSelectedClientId(client.id)}
+                          className={`w-full rounded-2xl border px-4 py-3 text-left transition ${
+                            selectedClientId === client.id
+                              ? 'border-brand-mclaren bg-brand-mclaren/5'
+                              : 'border-neutral-200 hover:border-brand-mclaren/40'
+                          }`}
+                        >
+                          <div className="font-semibold text-brand-black">{client.name}</div>
+                          <div className="mt-1 text-sm text-gray-600">{client.phone || client.email || '-'}</div>
+                        </button>
+                      ))
+                    ) : (
+                      <EmptyState message="No customers found." />
+                    )}
+                  </div>
+                </Panel>
+
+                <Panel title="Customer Profile" subtitle="History, vehicles, and service notes">
+                  {selectedClientDetails ? (
+                    <div className="space-y-6">
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <DetailCard label="Customer" value={selectedClientDetails.client.name} />
+                        <DetailCard label="Phone" value={selectedClientDetails.client.phone || '-'} />
+                        <DetailCard label="Email" value={selectedClientDetails.client.email || '-'} />
+                        <DetailCard label="Vehicles" value={selectedClientDetails.vehicles.length} />
+                      </div>
+
+                      <div>
+                        <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-gray-500">Vehicles</h3>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {selectedClientDetails.vehicles.length ? (
+                            selectedClientDetails.vehicles.map((vehicle) => (
+                              <span key={vehicle.id} className="rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1 text-sm text-gray-700">
+                                {vehicleLabel(vehicle)}
+                              </span>
+                            ))
+                          ) : (
+                            <span className="text-sm text-gray-500">No saved vehicles.</span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="grid gap-6 xl:grid-cols-2">
+                        <div>
+                          <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-gray-500">Service History</h3>
+                          <div className="mt-3 space-y-3">
+                            {selectedClientDetails.serviceJobs.length ? (
+                              selectedClientDetails.serviceJobs.map((job) => (
+                                <div key={job.id} className="rounded-2xl border border-neutral-200 px-4 py-3">
+                                  <div className="flex items-center justify-between gap-3">
+                                    <div>
+                                      <div className="font-semibold text-brand-black">{job.service_type}</div>
+                                      <div className="text-sm text-gray-600">{fmtDateTime(job.scheduled_at)}</div>
+                                    </div>
+                                    <StatusBadge status={job.ui_status || 'scheduled'} label={jobStatusLabel[job.ui_status || 'scheduled']} />
+                                  </div>
+                                </div>
+                              ))
+                            ) : (
+                              <EmptyState message="No service history yet." />
+                            )}
+                          </div>
+                        </div>
+
+                        <div>
+                          <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-gray-500">Customer Notes</h3>
+                          <div className="mt-3 space-y-3">
+                            <TextArea value={customerNotes} onChange={setCustomerNotes} rows={8} placeholder="Regular customer, prefers interior detail, requested morning drop-off..." />
+                            <button
+                              type="button"
+                              onClick={saveCustomerNotes}
+                              disabled={savingCustomer}
+                              className="rounded-2xl bg-brand-mclaren px-4 py-3 text-sm font-semibold text-white transition hover:bg-brand-mclaren-dark disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {savingCustomer ? 'Saving Notes...' : 'Save Notes'}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </>
-              )}
-            </div>
-          )}
-        </div>
-      </AuthGate>
-    </div>
+                  ) : (
+                    <EmptyState message="Select a customer to view details." />
+                  )}
+                </Panel>
+              </div>
+            )}
+
+            {activeTab === 'payments' && (
+              <Panel title="Payment Tracker" subtitle="Simple paid and unpaid follow-up from scheduled jobs">
+                <DataTable
+                  columns={['Customer', 'Service', 'Appointment', 'Amount', 'Payment Status']}
+                  rows={jobs.map((job) => (
+                    <tr key={job.id} className="border-t border-neutral-100">
+                      <td className="px-4 py-3 font-semibold text-brand-black">{job.client_name}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{job.service_type}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{fmtDateTime(job.scheduled_at)}</td>
+                      <td className="px-4 py-3 text-sm font-semibold text-brand-black">{currency(job.estimated_amount)}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-3">
+                          <StatusBadge status={job.payment_status || 'unpaid'} label={(job.payment_status || 'unpaid').toUpperCase()} />
+                          <button
+                            type="button"
+                            onClick={() =>
+                              updateJob(job.id, {
+                                paymentStatus: job.payment_status === 'paid' ? 'unpaid' : 'paid',
+                              })
+                            }
+                            className="rounded-xl border border-neutral-200 px-3 py-2 text-sm font-semibold text-gray-700 hover:border-brand-mclaren hover:text-brand-mclaren"
+                          >
+                            Mark as {job.payment_status === 'paid' ? 'Unpaid' : 'Paid'}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                />
+              </Panel>
+            )}
+
+            {activeTab === 'notifications' && (
+              <Panel title="Notifications" subtitle="New booking alerts and upcoming appointment reminders">
+                <div className="space-y-3">
+                  {notifications.length ? (
+                    notifications.map((notification) => (
+                      <div key={notification.id} className="flex flex-col gap-3 rounded-2xl border border-neutral-200 px-4 py-4 md:flex-row md:items-start md:justify-between">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <div className="font-semibold text-brand-black">{notification.title}</div>
+                            {!notification.read_at && <StatusBadge status="new_lead" label="Unread" />}
+                          </div>
+                          <div className="mt-1 text-sm text-gray-600">{notification.message}</div>
+                          <div className="mt-2 text-xs text-gray-500">
+                            {notification.category} | {fmtDateTime(notification.created_at)}
+                          </div>
+                        </div>
+                        {!notification.read_at && (
+                          <button
+                            type="button"
+                            onClick={() => markNotificationRead(notification.id)}
+                            className="rounded-xl border border-neutral-200 px-3 py-2 text-sm font-semibold text-gray-700 hover:border-brand-mclaren hover:text-brand-mclaren"
+                          >
+                            Mark Read
+                          </button>
+                        )}
+                      </div>
+                    ))
+                  ) : (
+                    <EmptyState message="No notifications yet." />
+                  )}
+                </div>
+              </Panel>
+            )}
+
+            {activeTab === 'reports' && (
+              <div className="grid gap-6 lg:grid-cols-[0.92fr_1.08fr]">
+                <Panel title="Revenue Snapshot" subtitle="Simple weekly and monthly performance">
+                  {reports ? (
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <MetricCard label="Weekly Estimated Revenue" value={currency(reports.summary.weeklyEstimatedRevenue)} helper="Completed jobs from the last 7 days" accent />
+                      <MetricCard label="Monthly Estimated Revenue" value={currency(reports.summary.monthlyEstimatedRevenue)} helper="Completed jobs this month" accent />
+                      <MetricCard label="Vehicles Detailed" value={reports.summary.vehiclesDetailedCount} helper="Completed jobs in the selected report window" />
+                      <MetricCard label="Completed Jobs (7 days)" value={reports.summary.completedJobsCount} helper="Weekly completed service count" />
+                    </div>
+                  ) : (
+                    <EmptyState message="Reports are not available." />
+                  )}
+                </Panel>
+
+                <Panel title="Status Breakdown" subtitle="Operational mix of recent jobs">
+                  {reports ? (
+                    <div className="space-y-3">
+                      {Object.entries(reports.jobsByStatus).map(([status, count]) => (
+                        <div key={status} className="flex items-center justify-between rounded-2xl border border-neutral-200 px-4 py-3">
+                          <div className="flex items-center gap-3">
+                            <StatusBadge status={status} />
+                            <span className="text-sm font-medium text-gray-700">{status.replace(/_/g, ' ')}</span>
+                          </div>
+                          <span className="text-sm font-semibold text-brand-black">{count}</span>
+                        </div>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() => reports && exportCsv('service-jobs-report.csv', reports.csvRows.jobs)}
+                        className="mt-2 rounded-2xl bg-brand-black px-4 py-3 text-sm font-semibold text-white transition hover:bg-black"
+                      >
+                        Export Jobs CSV
+                      </button>
+                    </div>
+                  ) : (
+                    <EmptyState message="No report data available." />
+                  )}
+                </Panel>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </AuthGate>
   );
 };
+
+const Panel: React.FC<{ title: string; subtitle?: string; children: React.ReactNode }> = ({ title, subtitle, children }) => (
+  <section className="rounded-[28px] border border-neutral-200 bg-white p-5 shadow-[0_18px_60px_rgba(15,23,42,0.06)] sm:p-6">
+    <div className="mb-5">
+      <h2 className="font-display text-2xl font-semibold uppercase text-brand-black">{title}</h2>
+      {subtitle && <p className="mt-2 text-sm text-gray-600">{subtitle}</p>}
+    </div>
+    {children}
+  </section>
+);
+
+const MetricCard: React.FC<{ label: string; value: React.ReactNode; helper?: string; accent?: boolean }> = ({ label, value, helper, accent }) => (
+  <div className={`rounded-[24px] border p-5 ${accent ? 'border-brand-mclaren/20 bg-[#fff4eb]' : 'border-neutral-200 bg-white'}`}>
+    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500">{label}</div>
+    <div className="mt-3 text-3xl font-semibold text-brand-black">{value}</div>
+    {helper && <div className="mt-2 text-sm text-gray-600">{helper}</div>}
+  </div>
+);
+
+const DataTable: React.FC<{ columns: string[]; rows: React.ReactNode[] }> = ({ columns, rows }) => (
+  <div className="overflow-hidden rounded-2xl border border-neutral-200">
+    <div className="overflow-x-auto">
+      <table className="min-w-full divide-y divide-neutral-200">
+        <thead className="bg-neutral-50">
+          <tr>
+            {columns.map((column) => (
+              <th key={column} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">
+                {column}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="bg-white">
+          {rows.length ? rows : (
+            <tr>
+              <td className="px-4 py-8 text-sm text-gray-500" colSpan={columns.length}>No records yet.</td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  </div>
+);
+
+const Input: React.FC<{
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  type?: string;
+  required?: boolean;
+}> = ({ label, value, onChange, placeholder, type = 'text', required = false }) => (
+  <label className="block">
+    <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">{label}</span>
+    <input
+      type={type}
+      required={required}
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+      placeholder={placeholder}
+      className="w-full rounded-2xl border border-neutral-200 px-4 py-3 text-sm text-brand-black outline-none transition focus:border-brand-mclaren"
+    />
+  </label>
+);
+
+const Select: React.FC<{
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: Array<{ value: string; label: string }>;
+}> = ({ label, value, onChange, options }) => (
+  <label className="block">
+    <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">{label}</span>
+    <select
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+      className="w-full rounded-2xl border border-neutral-200 px-4 py-3 text-sm text-brand-black outline-none transition focus:border-brand-mclaren"
+    >
+      {options.map((option) => (
+        <option key={option.value} value={option.value}>
+          {option.label}
+        </option>
+      ))}
+    </select>
+  </label>
+);
+
+const TextArea: React.FC<{
+  label?: string;
+  value: string;
+  onChange: (value: string) => void;
+  rows?: number;
+  placeholder?: string;
+}> = ({ label, value, onChange, rows = 4, placeholder }) => (
+  <label className="block">
+    {label && <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">{label}</span>}
+    <textarea
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+      rows={rows}
+      placeholder={placeholder}
+      className="w-full rounded-2xl border border-neutral-200 px-4 py-3 text-sm text-brand-black outline-none transition focus:border-brand-mclaren"
+    />
+  </label>
+);
+
+const DetailCard: React.FC<{ label: string; value: React.ReactNode }> = ({ label, value }) => (
+  <div className="rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-4">
+    <div className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">{label}</div>
+    <div className="mt-2 text-sm font-semibold text-brand-black">{value}</div>
+  </div>
+);
+
+const EmptyState: React.FC<{ message: string }> = ({ message }) => (
+  <div className="rounded-2xl border border-dashed border-neutral-300 bg-neutral-50 px-4 py-8 text-center text-sm text-gray-500">
+    {message}
+  </div>
+);
 
 export default Dashboard;

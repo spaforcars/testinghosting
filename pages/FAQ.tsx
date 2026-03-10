@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Minus, Plus } from 'lucide-react';
 import { useCmsPage } from '../hooks/useCmsPage';
 import { adaptFaqContent } from '../lib/contentAdapter';
@@ -9,11 +9,20 @@ const FAQ: React.FC = () => {
   const content = adaptFaqContent(cmsData);
   const [openIndex, setOpenIndex] = useState<number | null>(0);
 
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); observer.unobserve(e.target); } }),
+      { threshold: 0.1 }
+    );
+    document.querySelectorAll('.sr, .stagger').forEach(el => observer.observe(el));
+    return () => observer.disconnect();
+  }, []);
+
   return (
     <div className="min-h-screen bg-brand-gray">
-      <section className="border-b border-neutral-200 bg-gradient-to-b from-white to-neutral-50 px-4 py-16 md:py-20">
+      <section className="sr border-b border-black/[0.06] bg-white px-4 py-16 md:py-20">
         <div className="mx-auto max-w-7xl">
-          <span className="inline-block rounded-full bg-orange-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.08em] text-brand-mclaren">
+          <span className="inline-block rounded-full border border-brand-mclaren/30 bg-brand-mclaren/10 px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.15em] text-brand-mclaren">
             Frequently Asked Questions
           </span>
           <h1 className="mt-5 max-w-4xl font-display text-4xl font-bold uppercase leading-[0.95] text-brand-black md:text-6xl">
@@ -26,11 +35,11 @@ const FAQ: React.FC = () => {
       </section>
 
       <section className="px-4 py-16 md:py-20">
-        <div className="mx-auto max-w-4xl space-y-4">
+        <div className="sr mx-auto max-w-4xl space-y-4">
           {content.items.map((faq, index) => {
             const isOpen = openIndex === index;
             return (
-              <article key={faq.question} className="overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm">
+              <article key={faq.question} className="overflow-hidden rounded-2xl border border-black/[0.06] bg-white shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
                 <button
                   className="flex w-full items-center justify-between gap-4 px-6 py-5 text-left"
                   onClick={() => setOpenIndex(isOpen ? null : index)}
@@ -39,7 +48,7 @@ const FAQ: React.FC = () => {
                   {isOpen ? <Minus className="h-5 w-5 shrink-0 text-brand-mclaren" /> : <Plus className="h-5 w-5 shrink-0 text-brand-mclaren" />}
                 </button>
                 {isOpen && (
-                  <div className="animate-fade-in border-t border-neutral-200 px-6 py-5 text-sm leading-relaxed text-gray-600">
+                  <div className="animate-fade-in border-t border-black/[0.06] px-6 py-5 text-sm leading-relaxed text-gray-600">
                     {faq.answer}
                   </div>
                 )}

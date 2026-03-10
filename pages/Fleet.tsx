@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Building2, Briefcase, ShieldCheck } from 'lucide-react';
 import Button from '../components/Button';
 import ServiceNotice from '../components/ServiceNotice';
@@ -20,6 +20,15 @@ const Fleet: React.FC = () => {
     volume: '1-5 Vehicles',
     details: '',
   });
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); observer.unobserve(e.target); } }),
+      { threshold: 0.1 }
+    );
+    document.querySelectorAll('.sr, .stagger').forEach(el => observer.observe(el));
+    return () => observer.disconnect();
+  }, []);
 
   const submitFleetRequest = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -59,9 +68,9 @@ const Fleet: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-brand-gray">
-      <section className="border-b border-neutral-200 bg-gradient-to-b from-white to-neutral-50 px-4 py-16 md:py-20">
+      <section className="sr border-b border-black/[0.06] bg-white px-4 py-16 md:py-20">
         <div className="mx-auto max-w-7xl">
-          <span className="inline-block rounded-full bg-orange-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.08em] text-brand-mclaren">
+          <span className="inline-block rounded-full border border-brand-mclaren/30 bg-brand-mclaren/10 px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.15em] text-brand-mclaren">
             {content.badge}
           </span>
           <h1 className="mt-5 max-w-4xl font-display text-4xl font-bold uppercase leading-[0.95] text-brand-black md:text-6xl">
@@ -73,9 +82,9 @@ const Fleet: React.FC = () => {
         </div>
       </section>
 
-      <section className="px-4 py-16 md:py-20">
-        <div className="mx-auto grid max-w-7xl gap-6 md:grid-cols-2">
-          <article className="rounded-2xl border border-neutral-200 bg-white p-8 shadow-sm">
+      <section className="sr px-4 py-16 md:py-20">
+        <div className="stagger mx-auto grid max-w-7xl gap-6 md:grid-cols-2">
+          <article className="sr-delay-1 card-hover rounded-2xl border border-black/[0.06] bg-white p-8 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
             <Building2 className="h-10 w-10 text-brand-mclaren" />
             <h2 className="mt-5 font-display text-3xl font-semibold uppercase text-brand-black">{content.dealershipsTitle}</h2>
             <ul className="mt-6 space-y-3 text-sm text-gray-600">
@@ -91,7 +100,7 @@ const Fleet: React.FC = () => {
             </div>
           </article>
 
-          <article className="rounded-2xl border border-neutral-200 bg-white p-8 shadow-sm">
+          <article className="sr-delay-2 card-hover rounded-2xl border border-black/[0.06] bg-white p-8 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
             <Briefcase className="h-10 w-10 text-brand-mclaren" />
             <h2 className="mt-5 font-display text-3xl font-semibold uppercase text-brand-black">{content.fleetsTitle}</h2>
             <ul className="mt-6 space-y-3 text-sm text-gray-600">
@@ -109,8 +118,8 @@ const Fleet: React.FC = () => {
         </div>
       </section>
 
-      <section className="border-t border-neutral-200 bg-white px-4 py-16 md:py-20">
-        <div className="mx-auto max-w-3xl rounded-2xl border border-neutral-200 bg-brand-gray p-8 shadow-sm md:p-10">
+      <section className="sr border-t border-black/[0.06] bg-white px-4 py-16 md:py-20">
+        <div className="mx-auto max-w-3xl rounded-2xl border border-black/[0.06] bg-brand-gray p-8 shadow-[0_1px_3px_rgba(0,0,0,0.04)] md:p-10">
           <h3 className="font-display text-3xl font-semibold uppercase text-brand-black">{content.proposalTitle}</h3>
           <p className="mt-3 text-sm leading-relaxed text-gray-600">
             {content.proposalSubtitle}
@@ -130,7 +139,7 @@ const Fleet: React.FC = () => {
                   type="text"
                   value={formData.companyName}
                   onChange={(e) => setFormData((prev) => ({ ...prev, companyName: e.target.value }))}
-                  className="w-full rounded-lg border border-neutral-300 bg-white px-4 py-3 text-sm text-brand-black focus:border-brand-mclaren focus:outline-none"
+                  className="w-full rounded-lg border border-black/[0.06] bg-white px-4 py-3 text-sm text-brand-black focus:border-brand-mclaren focus:outline-none focus:ring-2 focus:ring-brand-mclaren/20"
                 />
               </div>
               <div>
@@ -140,7 +149,7 @@ const Fleet: React.FC = () => {
                   type="text"
                   value={formData.contactPerson}
                   onChange={(e) => setFormData((prev) => ({ ...prev, contactPerson: e.target.value }))}
-                  className="w-full rounded-lg border border-neutral-300 bg-white px-4 py-3 text-sm text-brand-black focus:border-brand-mclaren focus:outline-none"
+                  className="w-full rounded-lg border border-black/[0.06] bg-white px-4 py-3 text-sm text-brand-black focus:border-brand-mclaren focus:outline-none focus:ring-2 focus:ring-brand-mclaren/20"
                 />
               </div>
             </div>
@@ -153,7 +162,7 @@ const Fleet: React.FC = () => {
                   type="email"
                   value={formData.email}
                   onChange={(e) => setFormData((prev) => ({ ...prev, email: e.target.value }))}
-                  className="w-full rounded-lg border border-neutral-300 bg-white px-4 py-3 text-sm text-brand-black focus:border-brand-mclaren focus:outline-none"
+                  className="w-full rounded-lg border border-black/[0.06] bg-white px-4 py-3 text-sm text-brand-black focus:border-brand-mclaren focus:outline-none focus:ring-2 focus:ring-brand-mclaren/20"
                 />
               </div>
               <div>
@@ -163,7 +172,7 @@ const Fleet: React.FC = () => {
                   type="tel"
                   value={formData.phone}
                   onChange={(e) => setFormData((prev) => ({ ...prev, phone: e.target.value }))}
-                  className="w-full rounded-lg border border-neutral-300 bg-white px-4 py-3 text-sm text-brand-black focus:border-brand-mclaren focus:outline-none"
+                  className="w-full rounded-lg border border-black/[0.06] bg-white px-4 py-3 text-sm text-brand-black focus:border-brand-mclaren focus:outline-none focus:ring-2 focus:ring-brand-mclaren/20"
                 />
               </div>
             </div>
@@ -173,7 +182,7 @@ const Fleet: React.FC = () => {
               <select
                 value={formData.volume}
                 onChange={(e) => setFormData((prev) => ({ ...prev, volume: e.target.value }))}
-                className="w-full rounded-lg border border-neutral-300 bg-white px-4 py-3 text-sm text-brand-black focus:border-brand-mclaren focus:outline-none"
+                className="w-full rounded-lg border border-black/[0.06] bg-white px-4 py-3 text-sm text-brand-black focus:border-brand-mclaren focus:outline-none focus:ring-2 focus:ring-brand-mclaren/20"
               >
                 <option>1-5 Vehicles</option>
                 <option>5-20 Vehicles</option>
@@ -187,7 +196,7 @@ const Fleet: React.FC = () => {
               <textarea
                 value={formData.details}
                 onChange={(e) => setFormData((prev) => ({ ...prev, details: e.target.value }))}
-                className="h-32 w-full rounded-lg border border-neutral-300 bg-white px-4 py-3 text-sm text-brand-black focus:border-brand-mclaren focus:outline-none"
+                className="h-32 w-full rounded-lg border border-black/[0.06] bg-white px-4 py-3 text-sm text-brand-black focus:border-brand-mclaren focus:outline-none focus:ring-2 focus:ring-brand-mclaren/20"
               />
             </div>
 

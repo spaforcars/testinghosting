@@ -54,6 +54,15 @@ const Booking: React.FC = () => {
     if (foundService) setSelectedService(foundService);
   }, [location.search, services]);
 
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); observer.unobserve(e.target); } }),
+      { threshold: 0.1 }
+    );
+    document.querySelectorAll('.sr, .stagger').forEach(el => observer.observe(el));
+    return () => observer.disconnect();
+  }, []);
+
   const daysInMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
   const firstDayOfMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth(), 1).getDay();
 
@@ -91,10 +100,10 @@ const Booking: React.FC = () => {
           }}
           className={`relative h-11 rounded-lg text-sm font-medium transition-colors ${
             isSelected
-              ? 'bg-brand-black text-white'
+              ? 'bg-brand-mclaren text-white'
               : isPast
                 ? 'cursor-not-allowed bg-neutral-100 text-neutral-400'
-                : 'bg-white text-brand-black hover:bg-neutral-100'
+                : 'border border-black/[0.06] bg-white text-brand-black hover:border-brand-mclaren/50 hover:bg-brand-mclaren/5'
           }`}
         >
           {i}
@@ -140,9 +149,9 @@ const Booking: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-brand-gray">
-      <section className="border-b border-neutral-200 bg-gradient-to-b from-white to-neutral-50 px-4 py-14 md:py-16">
-        <div className="mx-auto max-w-7xl">
-          <span className="inline-block rounded-full bg-orange-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.08em] text-brand-mclaren">
+      <section className="border-b border-black/[0.06] bg-white px-4 py-14 md:py-16">
+        <div className="mx-auto max-w-7xl sr">
+          <span className="inline-block rounded-full bg-brand-mclaren/10 border border-brand-mclaren/30 text-brand-mclaren text-[11px] tracking-[0.15em] font-semibold px-4 py-1.5 uppercase">
             Booking
           </span>
           <h1 className="mt-4 font-display text-4xl font-bold uppercase leading-[0.95] text-brand-black md:text-6xl">
@@ -156,7 +165,7 @@ const Booking: React.FC = () => {
 
       <section className="px-4 py-10 md:py-14">
         <div className="mx-auto grid max-w-7xl gap-6 lg:grid-cols-3">
-          <aside className="h-fit rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm lg:sticky lg:top-24">
+          <aside className="sr h-fit rounded-2xl border border-black/[0.06] bg-white p-6 shadow-[0_1px_3px_rgba(0,0,0,0.04)] card-hover lg:sticky lg:top-24">
             <h2 className="font-display text-2xl font-semibold uppercase text-brand-black">Booking Summary</h2>
             <div className="mt-6 space-y-6">
               <div className={step >= 1 ? 'opacity-100' : 'opacity-50'}>
@@ -182,14 +191,14 @@ const Booking: React.FC = () => {
                 <p className="mt-2 text-sm text-gray-700">{details.fullName || 'Contact details pending'}</p>
               </div>
             </div>
-            <div className="mt-8 border-t border-neutral-200 pt-5">
+            <div className="mt-8 border-t border-black/[0.06] pt-5">
               <p className="text-sm text-gray-500">Estimated total</p>
               <p className="font-display text-3xl font-semibold text-brand-black">{selectedService?.price || '$0'}</p>
             </div>
           </aside>
 
           <div className="lg:col-span-2">
-            <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm md:p-8">
+            <div className="sr sr-delay-1 rounded-2xl border border-black/[0.06] bg-white p-6 shadow-[0_1px_3px_rgba(0,0,0,0.04)] md:p-8">
               {submitted ? (
                 <div className="animate-fade-in py-8 text-center">
                   <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
@@ -204,9 +213,9 @@ const Booking: React.FC = () => {
                 <>
                   {step === 1 && (
                     <div className="animate-fade-in">
-                      <div className="mb-6 flex items-end justify-between border-b border-neutral-200 pb-4">
+                      <div className="mb-6 flex items-end justify-between border-b border-black/[0.06] pb-4">
                         <h2 className="font-display text-3xl font-semibold uppercase text-brand-black">Select Service</h2>
-                        <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.08em] text-gray-500">Step 1 of 3</span>
+                        <span className="rounded-full bg-brand-mclaren/10 border border-brand-mclaren/30 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.15em] text-brand-mclaren">Step 1 of 3</span>
                       </div>
 
                       <div className="space-y-3">
@@ -219,8 +228,8 @@ const Booking: React.FC = () => {
                               onClick={() => setSelectedService(service)}
                               className={`w-full rounded-xl border px-5 py-4 text-left transition-colors ${
                                 isSelected
-                                  ? 'border-brand-mclaren bg-orange-50'
-                                  : 'border-neutral-200 bg-white hover:border-brand-mclaren/50'
+                                  ? 'border-brand-mclaren bg-brand-mclaren/5'
+                                  : 'border-black/[0.06] bg-white hover:border-brand-mclaren/50'
                               }`}
                             >
                               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -245,9 +254,9 @@ const Booking: React.FC = () => {
 
                   {step === 2 && (
                     <div className="animate-fade-in">
-                      <div className="mb-6 flex items-end justify-between border-b border-neutral-200 pb-4">
+                      <div className="mb-6 flex items-end justify-between border-b border-black/[0.06] pb-4">
                         <h2 className="font-display text-3xl font-semibold uppercase text-brand-black">Select Date & Time</h2>
-                        <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.08em] text-gray-500">Step 2 of 3</span>
+                        <span className="rounded-full bg-brand-mclaren/10 border border-brand-mclaren/30 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.15em] text-brand-mclaren">Step 2 of 3</span>
                       </div>
 
                       <div className="grid gap-6 lg:grid-cols-[1fr_210px]">
@@ -256,7 +265,7 @@ const Booking: React.FC = () => {
                             <button
                               type="button"
                               onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1))}
-                              className="rounded-md p-2 text-gray-500 transition-colors hover:bg-neutral-100 hover:text-brand-black"
+                              className="rounded-md p-2 text-gray-500 transition-colors hover:bg-brand-gray hover:text-brand-black"
                             >
                               <ChevronLeft className="h-5 w-5" />
                             </button>
@@ -264,7 +273,7 @@ const Booking: React.FC = () => {
                             <button
                               type="button"
                               onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1))}
-                              className="rounded-md p-2 text-gray-500 transition-colors hover:bg-neutral-100 hover:text-brand-black"
+                              className="rounded-md p-2 text-gray-500 transition-colors hover:bg-brand-gray hover:text-brand-black"
                             >
                               <ChevronRight className="h-5 w-5" />
                             </button>
@@ -292,8 +301,8 @@ const Booking: React.FC = () => {
                                   onClick={() => setSelectedTime(slot)}
                                   className={`w-full rounded-lg border px-3 py-2 text-sm transition-colors ${
                                     selectedTime === slot
-                                      ? 'border-brand-black bg-brand-black text-white'
-                                      : 'border-neutral-300 bg-white text-brand-black hover:border-brand-mclaren hover:text-brand-mclaren'
+                                      ? 'border-brand-mclaren bg-brand-mclaren/5 text-brand-mclaren font-semibold'
+                                      : 'border-black/[0.06] bg-white text-brand-black hover:border-brand-mclaren hover:text-brand-mclaren'
                                   }`}
                                 >
                                   {slot}
@@ -301,7 +310,7 @@ const Booking: React.FC = () => {
                               ))}
                             </div>
                           ) : (
-                            <div className="rounded-lg border border-dashed border-neutral-300 bg-neutral-50 px-3 py-6 text-center text-sm text-gray-500">
+                            <div className="rounded-lg border border-dashed border-black/[0.06] bg-brand-gray px-3 py-6 text-center text-sm text-gray-500">
                               Select a date first
                             </div>
                           )}
@@ -325,9 +334,9 @@ const Booking: React.FC = () => {
 
                   {step === 3 && (
                     <div className="animate-fade-in">
-                      <div className="mb-6 flex items-end justify-between border-b border-neutral-200 pb-4">
+                      <div className="mb-6 flex items-end justify-between border-b border-black/[0.06] pb-4">
                         <h2 className="font-display text-3xl font-semibold uppercase text-brand-black">Your Details</h2>
-                        <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.08em] text-gray-500">Step 3 of 3</span>
+                        <span className="rounded-full bg-brand-mclaren/10 border border-brand-mclaren/30 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.15em] text-brand-mclaren">Step 3 of 3</span>
                       </div>
 
                       <div className="grid gap-5 md:grid-cols-2">
@@ -337,7 +346,7 @@ const Booking: React.FC = () => {
                             type="text"
                             value={details.fullName}
                             onChange={(e) => setDetails((prev) => ({ ...prev, fullName: e.target.value }))}
-                            className="w-full rounded-lg border border-neutral-300 bg-white px-4 py-3 text-sm text-brand-black focus:border-brand-mclaren focus:outline-none"
+                            className="w-full rounded-lg border border-black/[0.06] bg-white px-4 py-3 text-sm text-brand-black focus:border-brand-mclaren focus:ring-2 focus:ring-brand-mclaren/20 focus:outline-none transition-shadow"
                             placeholder="John Doe"
                           />
                         </div>
@@ -347,7 +356,7 @@ const Booking: React.FC = () => {
                             type="email"
                             value={details.email}
                             onChange={(e) => setDetails((prev) => ({ ...prev, email: e.target.value }))}
-                            className="w-full rounded-lg border border-neutral-300 bg-white px-4 py-3 text-sm text-brand-black focus:border-brand-mclaren focus:outline-none"
+                            className="w-full rounded-lg border border-black/[0.06] bg-white px-4 py-3 text-sm text-brand-black focus:border-brand-mclaren focus:ring-2 focus:ring-brand-mclaren/20 focus:outline-none transition-shadow"
                             placeholder="you@example.com"
                           />
                         </div>
@@ -357,7 +366,7 @@ const Booking: React.FC = () => {
                             type="tel"
                             value={details.phone}
                             onChange={(e) => setDetails((prev) => ({ ...prev, phone: e.target.value }))}
-                            className="w-full rounded-lg border border-neutral-300 bg-white px-4 py-3 text-sm text-brand-black focus:border-brand-mclaren focus:outline-none"
+                            className="w-full rounded-lg border border-black/[0.06] bg-white px-4 py-3 text-sm text-brand-black focus:border-brand-mclaren focus:ring-2 focus:ring-brand-mclaren/20 focus:outline-none transition-shadow"
                             placeholder="+1 (555) 000-0000"
                           />
                         </div>
@@ -367,7 +376,7 @@ const Booking: React.FC = () => {
                             type="text"
                             value={details.vehicle}
                             onChange={(e) => setDetails((prev) => ({ ...prev, vehicle: e.target.value }))}
-                            className="w-full rounded-lg border border-neutral-300 bg-white px-4 py-3 text-sm text-brand-black focus:border-brand-mclaren focus:outline-none"
+                            className="w-full rounded-lg border border-black/[0.06] bg-white px-4 py-3 text-sm text-brand-black focus:border-brand-mclaren focus:ring-2 focus:ring-brand-mclaren/20 focus:outline-none transition-shadow"
                             placeholder="Year, Make, Model"
                           />
                         </div>
@@ -378,7 +387,7 @@ const Booking: React.FC = () => {
                         <textarea
                           value={details.notes}
                           onChange={(e) => setDetails((prev) => ({ ...prev, notes: e.target.value }))}
-                          className="h-28 w-full rounded-lg border border-neutral-300 bg-white px-4 py-3 text-sm text-brand-black focus:border-brand-mclaren focus:outline-none"
+                          className="h-28 w-full rounded-lg border border-black/[0.06] bg-white px-4 py-3 text-sm text-brand-black focus:border-brand-mclaren focus:ring-2 focus:ring-brand-mclaren/20 focus:outline-none transition-shadow"
                           placeholder="Any concerns or goals for this appointment?"
                         />
                       </div>

@@ -3,36 +3,71 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#111827" />
-    <title>Spa for Cars | Editorial Detail Studio</title>
+    <meta name="theme-color" content="#0A0A0A" />
+    <title>Spa for Cars | Premium Auto Detailing Studio</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,600;1,700;1,800;1,900&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=Outfit:wght@300;400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
     <script>
       tailwind.config = {
         theme: {
           extend: {
             colors: {
               brand: {
-                black: '#111827',
-                white: '#ffffff',
-                gray: '#f8fafc',
+                black: '#0A0A0A',
+                white: '#FAFAFA',
+                gray: '#F5F5F5',
                 accent: '#f97316',
-                mclaren: '#ff7a00',
+                mclaren: '#FF7A00',
+                gold: '#C4A862',
+                surface: '#141414',
               }
             },
             fontFamily: {
-              sans: ['DM Sans', 'sans-serif'],
-              display: ['Poppins', 'sans-serif'],
-              mono: ['DM Sans', 'sans-serif'],
+              sans: ['Outfit', 'sans-serif'],
+              display: ['Syne', 'sans-serif'],
+              serif: ['Instrument Serif', 'serif'],
+              mono: ['Outfit', 'sans-serif'],
             },
             animation: {
               'marquee': 'marquee 25s linear infinite',
+              'reveal': 'reveal 0.8s cubic-bezier(0.16, 1, 0.3, 1) both',
+              'reveal-up': 'reveal-up 0.9s cubic-bezier(0.16, 1, 0.3, 1) both',
+              'fade-in': 'fade-in 0.6s ease-out both',
+              'scale-in': 'scale-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) both',
+              'slide-up': 'slide-up 0.7s cubic-bezier(0.16, 1, 0.3, 1) both',
+              'glow': 'glow 3s ease-in-out infinite',
             },
             keyframes: {
               marquee: {
                 '0%': { transform: 'translateX(0%)' },
                 '100%': { transform: 'translateX(-100%)' },
-              }
+              },
+              reveal: {
+                '0%': { opacity: '0', transform: 'translateY(30px)' },
+                '100%': { opacity: '1', transform: 'translateY(0)' },
+              },
+              'reveal-up': {
+                '0%': { opacity: '0', transform: 'translateY(60px)' },
+                '100%': { opacity: '1', transform: 'translateY(0)' },
+              },
+              'fade-in': {
+                '0%': { opacity: '0' },
+                '100%': { opacity: '1' },
+              },
+              'scale-in': {
+                '0%': { opacity: '0', transform: 'scale(0.95)' },
+                '100%': { opacity: '1', transform: 'scale(1)' },
+              },
+              'slide-up': {
+                '0%': { opacity: '0', transform: 'translateY(40px)' },
+                '100%': { opacity: '1', transform: 'translateY(0)' },
+              },
+              'glow': {
+                '0%, 100%': { opacity: '0.4' },
+                '50%': { opacity: '0.8' },
+              },
             }
           },
         },
@@ -51,7 +86,7 @@
     </script>
   <link rel="stylesheet" href="/index.css">
 </head>
-  <body class="bg-brand-white text-brand-black antialiased selection:bg-brand-black selection:text-brand-white">
+  <body class="bg-brand-white text-brand-black antialiased selection:bg-brand-mclaren selection:text-white">
     <div id="root"></div>
   <script type="module" src="/index.tsx"></script>
 </body>

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Check } from 'lucide-react';
 import Button from '../components/Button';
@@ -21,11 +21,20 @@ const Pricing: React.FC = () => {
   const fallbackHighlightId = tiers[Math.min(1, Math.max(0, tiers.length - 1))]?.id;
   const highlightServiceId = content.highlightServiceId || fallbackHighlightId;
 
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); observer.unobserve(e.target); } }),
+      { threshold: 0.1 }
+    );
+    document.querySelectorAll('.sr, .stagger').forEach(el => observer.observe(el));
+    return () => observer.disconnect();
+  }, []);
+
   return (
     <div className="min-h-screen bg-brand-gray">
-      <section className="border-b border-neutral-200 bg-gradient-to-b from-white to-neutral-50 px-4 py-16 md:py-20">
-        <div className="mx-auto max-w-7xl">
-          <span className="inline-block rounded-full bg-orange-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.08em] text-brand-mclaren">
+      <section className="border-b border-black/[0.06] bg-white px-4 py-16 md:py-20">
+        <div className="mx-auto max-w-7xl sr">
+          <span className="inline-block rounded-full bg-brand-mclaren/10 border border-brand-mclaren/30 text-brand-mclaren text-[11px] tracking-[0.15em] font-semibold px-4 py-1.5 uppercase">
             {content.badge}
           </span>
           <h1 className="mt-5 max-w-4xl font-display text-4xl font-bold uppercase leading-[0.95] text-brand-black md:text-6xl">
@@ -38,20 +47,20 @@ const Pricing: React.FC = () => {
       </section>
 
       <section className="px-4 py-16 md:py-20">
-        <div className="mx-auto grid max-w-7xl gap-6 md:grid-cols-3">
+        <div className="mx-auto grid max-w-7xl gap-6 md:grid-cols-3 stagger">
           {tiers.map((tier) => {
             const highlight = tier.id === highlightServiceId;
             return (
               <article
                 key={tier.id || tier.title}
-                className={`relative rounded-2xl border p-8 shadow-sm ${
+                className={`relative rounded-2xl border p-8 card-hover ${
                   highlight
-                    ? 'border-brand-black bg-brand-black text-white'
-                    : 'border-neutral-200 bg-white text-brand-black'
+                    ? 'grain-overlay border-brand-black bg-brand-black text-white shadow-[0_1px_3px_rgba(0,0,0,0.04)]'
+                    : 'border-black/[0.06] bg-white text-brand-black shadow-[0_1px_3px_rgba(0,0,0,0.04)]'
                 }`}
               >
                 {highlight && (
-                  <div className="absolute right-4 top-4 rounded-full bg-orange-200 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-brand-black">
+                  <div className="absolute right-4 top-4 rounded-full bg-brand-mclaren/10 border border-brand-mclaren/30 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.15em] text-brand-mclaren">
                     {content.mostPopularBadge}
                   </div>
                 )}
@@ -67,7 +76,7 @@ const Pricing: React.FC = () => {
                     <div key={feature} className="flex items-start gap-2 text-sm">
                       <Check
                         className={`mt-0.5 h-4 w-4 shrink-0 ${
-                          highlight ? 'text-orange-200' : 'text-brand-mclaren'
+                          highlight ? 'text-brand-mclaren' : 'text-brand-mclaren'
                         }`}
                       />
                       <span>{feature}</span>
@@ -88,8 +97,8 @@ const Pricing: React.FC = () => {
         </div>
       </section>
 
-      <section className="border-t border-neutral-200 bg-white px-4 py-16">
-        <div className="mx-auto max-w-3xl text-center">
+      <section className="border-t border-black/[0.06] bg-white px-4 py-16">
+        <div className="mx-auto max-w-3xl text-center sr">
           <h3 className="font-display text-3xl font-bold uppercase text-brand-black">
             {content.customQuoteTitle}
           </h3>

@@ -40,6 +40,9 @@ create table if not exists public.leads (
   source_page text not null,
   status text not null default 'lead',
   assignee_id uuid references auth.users(id) on delete set null,
+  vehicle_make text,
+  vehicle_model text,
+  vehicle_year int,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -75,6 +78,12 @@ create table if not exists public.service_jobs (
   scheduled_at timestamptz,
   assignee_id uuid references auth.users(id) on delete set null,
   notes text,
+  vehicle_make text,
+  vehicle_model text,
+  vehicle_year int,
+  estimated_amount numeric(12,2) not null default 0,
+  payment_status text not null default 'unpaid',
+  completed_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -94,6 +103,15 @@ alter table if exists public.clients add column if not exists archived boolean n
 
 alter table if exists public.service_jobs add column if not exists assignee_id uuid references auth.users(id) on delete set null;
 alter table if exists public.service_jobs add column if not exists notes text;
+alter table if exists public.leads add column if not exists vehicle_make text;
+alter table if exists public.leads add column if not exists vehicle_model text;
+alter table if exists public.leads add column if not exists vehicle_year int;
+alter table if exists public.service_jobs add column if not exists vehicle_make text;
+alter table if exists public.service_jobs add column if not exists vehicle_model text;
+alter table if exists public.service_jobs add column if not exists vehicle_year int;
+alter table if exists public.service_jobs add column if not exists estimated_amount numeric(12,2) not null default 0;
+alter table if exists public.service_jobs add column if not exists payment_status text not null default 'unpaid';
+alter table if exists public.service_jobs add column if not exists completed_at timestamptz;
 
 -- Customer vehicles
 create table if not exists public.customer_vehicles (
@@ -256,11 +274,14 @@ on conflict (key) do nothing;
 create index if not exists idx_leads_status_created_at on public.leads(status, created_at desc);
 create index if not exists idx_leads_assignee_id on public.leads(assignee_id);
 create index if not exists idx_leads_source_page on public.leads(source_page);
+create index if not exists idx_leads_vehicle_lookup on public.leads(vehicle_make, vehicle_model, vehicle_year);
 
 create index if not exists idx_service_jobs_status_scheduled_at on public.service_jobs(status, scheduled_at);
 create index if not exists idx_service_jobs_assignee_id on public.service_jobs(assignee_id);
 create index if not exists idx_service_jobs_client_id on public.service_jobs(client_id);
 create index if not exists idx_service_jobs_lead_id on public.service_jobs(lead_id);
+create index if not exists idx_service_jobs_payment_status on public.service_jobs(payment_status);
+create index if not exists idx_service_jobs_completed_at on public.service_jobs(completed_at desc);
 
 create index if not exists idx_clients_archived_created_at on public.clients(archived, created_at desc);
 create index if not exists idx_clients_assignee_id on public.clients(assignee_id);

@@ -24,6 +24,11 @@ interface ConvertLeadBody {
     scheduledAt?: string | null;
     assigneeId?: string | null;
     notes?: string | null;
+    vehicleMake?: string | null;
+    vehicleModel?: string | null;
+    vehicleYear?: number | null;
+    estimatedAmount?: number | null;
+    paymentStatus?: 'unpaid' | 'paid' | null;
   };
 }
 
@@ -59,6 +64,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let clientId = body.clientId || null;
     let clientRecord: Record<string, unknown> | null = null;
 
+    const vehicleMake = body.serviceJob?.vehicleMake ?? lead.vehicle_make;
+    const vehicleModel = body.serviceJob?.vehicleModel ?? lead.vehicle_model;
+    const vehicleYear = body.serviceJob?.vehicleYear ?? lead.vehicle_year;
+
     if (!clientId && createClient) {
       const clientInsert = {
         name: body.client?.name || lead.name,
@@ -79,6 +88,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (clientError) throw new Error(clientError.message);
       clientId = createdClient.id;
       clientRecord = createdClient;
+
+      if (vehicleMake || vehicleModel || vehicleYear) {
+        await supabase.from('customer_vehicles').insert({
+          client_id: createdClient.id,
+          make: vehicleMake || null,
+          model: vehicleModel || null,
+          year: vehicleYear || null,
+        });
+      }
     }
 
     let serviceJobRecord: Record<string, unknown> | null = null;
@@ -96,6 +114,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             ? body.serviceJob.assigneeId
             : lead.assignee_id,
         notes: body.serviceJob?.notes || null,
+        vehicle_make: vehicleMake || null,
+        vehicle_model: vehicleModel || null,
+        vehicle_year: vehicleYear || null,
+        estimated_amount:
+          typeof body.serviceJob?.estimatedAmount === 'number' ? body.serviceJob.estimatedAmount : 0,
+        payment_status: body.serviceJob?.paymentStatus || 'unpaid',
+        completed_at: body.serviceJob?.status === 'completed' ? new Date().toISOString() : null,
       };
 
       const { data: createdJob, error: jobError } = await supabase

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Clock3, ShieldCheck, Sparkles } from 'lucide-react';
 import Button from '../components/Button';
@@ -12,11 +12,20 @@ const Services: React.FC = () => {
   const content = adaptServicesContent(cmsData);
   const services = content.services;
 
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); observer.unobserve(e.target); } }),
+      { threshold: 0.1 }
+    );
+    document.querySelectorAll('.sr, .stagger').forEach(el => observer.observe(el));
+    return () => observer.disconnect();
+  }, []);
+
   return (
     <div className="min-h-screen bg-brand-gray">
-      <section className="border-b border-neutral-200 bg-gradient-to-b from-white to-neutral-50 px-4 py-16 md:py-20">
+      <section className="sr border-b border-black/[0.06] bg-white px-4 py-16 md:py-20">
         <div className="mx-auto max-w-7xl">
-          <span className="inline-block rounded-full bg-orange-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.08em] text-brand-mclaren">
+          <span className="inline-block rounded-full bg-brand-mclaren/10 border border-brand-mclaren/30 text-brand-mclaren text-[11px] tracking-[0.15em] font-semibold px-4 py-1.5 uppercase">
             {content.badge}
           </span>
           <h1 className="mt-5 max-w-4xl font-display text-4xl font-bold uppercase leading-[0.95] text-brand-black md:text-6xl">
@@ -33,10 +42,10 @@ const Services: React.FC = () => {
           {services.map((service) => (
             <article
               key={service.id}
-              className="overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm transition-shadow duration-300 hover:shadow-lg"
+              className="sr overflow-hidden rounded-2xl border border-black/[0.06] bg-white shadow-[0_1px_3px_rgba(0,0,0,0.04)] card-hover transition-shadow duration-300 hover:shadow-lg"
             >
               <div className="grid grid-cols-1 lg:grid-cols-[420px_1fr]">
-                <div className="relative aspect-[16/10] overflow-hidden lg:aspect-auto lg:h-full">
+                <div className="img-zoom relative aspect-[16/10] overflow-hidden lg:aspect-auto lg:h-full">
                   <img
                     src={service.image}
                     alt={service.title}
@@ -61,15 +70,15 @@ const Services: React.FC = () => {
                   </div>
 
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                    <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4">
+                    <div className="rounded-lg border border-black/[0.06] bg-brand-gray p-4">
                       <p className="text-xs font-semibold uppercase tracking-[0.08em] text-gray-500">Ideal For</p>
                       <p className="mt-2 text-sm leading-relaxed text-gray-700">{service.idealFor}</p>
                     </div>
-                    <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4">
+                    <div className="rounded-lg border border-black/[0.06] bg-brand-gray p-4">
                       <p className="text-xs font-semibold uppercase tracking-[0.08em] text-gray-500">Process</p>
                       <p className="mt-2 text-sm leading-relaxed text-gray-700">{service.process}</p>
                     </div>
-                    <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4">
+                    <div className="rounded-lg border border-black/[0.06] bg-brand-gray p-4">
                       <p className="text-xs font-semibold uppercase tracking-[0.08em] text-gray-500">Service Notes</p>
                       <p className="mt-2 text-sm leading-relaxed text-gray-700">{service.notes}</p>
                     </div>
@@ -84,7 +93,7 @@ const Services: React.FC = () => {
                     ))}
                   </div>
 
-                  <div className="flex flex-wrap items-center justify-between gap-4 border-t border-neutral-200 pt-4">
+                  <div className="flex flex-wrap items-center justify-between gap-4 border-t border-black/[0.06] pt-4">
                     <div className="flex flex-wrap items-center gap-4">
                       <span className="inline-flex items-center gap-2 text-sm font-medium text-gray-600">
                         <Clock3 className="h-4 w-4 text-brand-mclaren" />

@@ -10,6 +10,9 @@ const toIsoDate = (value: string | undefined, fallback: Date) => {
   return Number.isNaN(parsed.getTime()) ? fallback.toISOString() : parsed.toISOString();
 };
 
+const sumEstimatedAmount = (rows: Array<Record<string, unknown>>) =>
+  rows.reduce((sum, row) => sum + Number(row.estimated_amount || 0), 0);
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'GET') return methodNotAllowed(res);
 
@@ -23,104 +26,77 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!reportsEnabled) return forbidden(res);
 
     const now = new Date();
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     const fromIso = toIsoDate(String(req.query.dateFrom || ''), thirtyDaysAgo);
     const toIso = toIsoDate(String(req.query.dateTo || ''), now);
 
     const [
-      leadsResult,
       serviceJobsResult,
-      billingResult,
+      weeklyCompletedJobsResult,
+      monthlyCompletedJobsResult,
     ] = await Promise.all([
-      supabase
-        .from('leads')
-        .select('*')
-        .gte('created_at', fromIso)
-        .lte('created_at', toIso),
       supabase
         .from('service_jobs')
         .select('*')
         .gte('created_at', fromIso)
         .lte('created_at', toIso),
       supabase
-        .from('billing_records')
+        .from('service_jobs')
         .select('*')
-        .gte('created_at', fromIso)
-        .lte('created_at', toIso),
+        .eq('status', 'completed')
+        .gte('completed_at', sevenDaysAgo.toISOString())
+        .lte('completed_at', now.toISOString()),
+      supabase
+        .from('service_jobs')
+        .select('*')
+        .eq('status', 'completed')
+        .gte('completed_at', monthStart.toISOString())
+        .lte('completed_at', now.toISOString()),
     ]);
 
-    if (leadsResult.error) throw new Error(leadsResult.error.message);
     if (serviceJobsResult.error) throw new Error(serviceJobsResult.error.message);
-    if (billingResult.error) throw new Error(billingResult.error.message);
+    if (weeklyCompletedJobsResult.error) throw new Error(weeklyCompletedJobsResult.error.message);
+    if (monthlyCompletedJobsResult.error) throw new Error(monthlyCompletedJobsResult.error.message);
 
-    const leads = leadsResult.data || [];
     const serviceJobs = serviceJobsResult.data || [];
-    const billingRecords = billingResult.data || [];
-
-    const leadsByStatus = leads.reduce<Record<string, number>>((acc, item) => {
-      acc[item.status] = (acc[item.status] || 0) + 1;
-      return acc;
-    }, {});
+    const weeklyCompletedJobs = weeklyCompletedJobsResult.data || [];
+    const monthlyCompletedJobs = monthlyCompletedJobsResult.data || [];
 
     const jobsByStatus = serviceJobs.reduce<Record<string, number>>((acc, item) => {
       acc[item.status] = (acc[item.status] || 0) + 1;
       return acc;
     }, {});
 
-    const billingByStatus = billingRecords.reduce<Record<string, number>>((acc, item) => {
-      acc[item.status] = (acc[item.status] || 0) + 1;
-      return acc;
-    }, {});
-
-    const outstandingAmount = billingRecords
-      .filter((item) => ['sent', 'partially_paid', 'overdue'].includes(item.status))
-      .reduce((sum, item) => sum + Number(item.total_amount || 0) - Number(item.amount_paid || 0), 0);
-
-    const overdueCount = billingRecords.filter((item) => item.status === 'overdue').length;
+    const vehiclesDetailedCount = serviceJobs.filter((item) => item.status === 'completed').length;
+    const completedJobsCount = weeklyCompletedJobs.length;
 
     return res.status(200).json({
       summary: {
         dateFrom: fromIso,
         dateTo: toIso,
-        totalLeads: leads.length,
-        qualifiedLeads: (leadsByStatus.quoted || 0) + (leadsByStatus.booked || 0),
-        bookedLeads: leadsByStatus.booked || 0,
-        totalServiceJobs: serviceJobs.length,
-        completedJobs: jobsByStatus.completed || 0,
-        totalBillingRecords: billingRecords.length,
-        overdueCount,
-        outstandingAmount,
+        weeklyEstimatedRevenue: sumEstimatedAmount(weeklyCompletedJobs),
+        monthlyEstimatedRevenue: sumEstimatedAmount(monthlyCompletedJobs),
+        vehiclesDetailedCount,
+        completedJobsCount,
       },
-      leadsByStatus,
       jobsByStatus,
-      billingByStatus,
       csvRows: {
-        leads: leads.map((lead) => ({
-          id: lead.id,
-          name: lead.name,
-          email: lead.email,
-          serviceType: lead.service_type,
-          status: lead.status,
-          sourcePage: lead.source_page,
-          createdAt: lead.created_at,
-        })),
         jobs: serviceJobs.map((job) => ({
           id: job.id,
           clientName: job.client_name,
+          vehicle: [job.vehicle_year, job.vehicle_make, job.vehicle_model].filter(Boolean).join(' '),
           serviceType: job.service_type,
           status: job.status,
+          estimatedAmount: job.estimated_amount,
+          paymentStatus: job.payment_status,
           scheduledAt: job.scheduled_at,
+          completedAt: job.completed_at,
           createdAt: job.created_at,
         })),
-        billing: billingRecords.map((item) => ({
-          id: item.id,
-          recordNumber: item.record_number,
-          status: item.status,
-          totalAmount: item.total_amount,
-          amountPaid: item.amount_paid,
-          dueAt: item.due_at,
-          createdAt: item.created_at,
-        })),
+        leads: [],
+        billing: [],
       },
     });
   } catch (error) {

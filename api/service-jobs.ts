@@ -5,6 +5,7 @@ import { badRequest, forbidden, methodNotAllowed, serverError, unauthorized } fr
 import { writeAuditLog } from './_lib/audit';
 import { createInAppNotification } from './_lib/inAppNotifications';
 import { isFeatureEnabled } from './_lib/featureFlags';
+import { mapJobToUiStatus, mapJobUiStatusToInternal } from './_lib/dashboardStatus';
 
 const normalizePagination = (req: VercelRequest) => {
   const rawPage = Number(req.query.page || 1);
@@ -39,10 +40,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .order('scheduled_at', { ascending: true, nullsFirst: false })
         .order('created_at', { ascending: false });
 
-      if (req.query.status) query = query.eq('status', String(req.query.status));
+      if (req.query.status) {
+        const statuses = mapJobUiStatusToInternal(String(req.query.status));
+        query = statuses.length > 1 ? query.in('status', statuses) : query.eq('status', statuses[0]);
+      }
       if (req.query.assigneeId) query = query.eq('assignee_id', String(req.query.assigneeId));
       if (req.query.clientId) query = query.eq('client_id', String(req.query.clientId));
       if (req.query.leadId) query = query.eq('lead_id', String(req.query.leadId));
+      if (req.query.paymentStatus) query = query.eq('payment_status', String(req.query.paymentStatus));
       if (req.query.scheduledFrom) {
         const parsed = new Date(String(req.query.scheduledFrom));
         if (!Number.isNaN(parsed.getTime())) query = query.gte('scheduled_at', parsed.toISOString());
@@ -56,7 +61,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (term) {
           const escaped = term.replace(/,/g, ' ').replace(/%/g, '');
           query = query.or(
-            `client_name.ilike.%${escaped}%,service_type.ilike.%${escaped}%,notes.ilike.%${escaped}%`
+            `client_name.ilike.%${escaped}%,service_type.ilike.%${escaped}%,notes.ilike.%${escaped}%,vehicle_make.ilike.%${escaped}%,vehicle_model.ilike.%${escaped}%`
           );
         }
       }
@@ -68,7 +73,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const totalPages = total > 0 ? Math.ceil(total / pageSize) : 1;
 
       return res.status(200).json({
-        serviceJobs: data || [],
+        serviceJobs: (data || []).map((job) => ({
+          ...job,
+          ui_status: mapJobToUiStatus(job.status),
+        })),
         pagination: { page, pageSize, total, totalPages },
       });
     }
@@ -84,6 +92,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         scheduledAt?: string | null;
         assigneeId?: string | null;
         notes?: string | null;
+        vehicleMake?: string | null;
+        vehicleModel?: string | null;
+        vehicleYear?: number | null;
+        estimatedAmount?: number | null;
+        paymentStatus?: 'unpaid' | 'paid' | null;
       };
       if (!body.clientName || !body.serviceType) {
         return badRequest(res, 'clientName and serviceType are required');
@@ -96,10 +109,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           client_id: body.clientId || null,
           client_name: body.clientName,
           service_type: body.serviceType,
-          status: body.status || 'booked',
+          status: mapJobUiStatusToInternal(body.status || 'scheduled')[0] || 'booked',
           scheduled_at: body.scheduledAt || null,
           assignee_id: body.assigneeId || null,
           notes: body.notes || null,
+          vehicle_make: body.vehicleMake || null,
+          vehicle_model: body.vehicleModel || null,
+          vehicle_year: typeof body.vehicleYear === 'number' ? body.vehicleYear : null,
+          estimated_amount: typeof body.estimatedAmount === 'number' ? body.estimatedAmount : 0,
+          payment_status: body.paymentStatus || 'unpaid',
+          completed_at: body.status === 'completed' ? new Date().toISOString() : null,
         })
         .select('*')
         .single();
@@ -139,7 +158,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         });
       }
 
-      return res.status(201).json({ serviceJob: data });
+      return res.status(201).json({
+        serviceJob: {
+          ...data,
+          ui_status: mapJobToUiStatus(data.status),
+        },
+      });
     }
 
     if (req.method === 'PATCH') {
@@ -153,6 +177,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         serviceType?: string;
         clientName?: string;
         clientId?: string | null;
+        vehicleMake?: string | null;
+        vehicleModel?: string | null;
+        vehicleYear?: number | null;
+        estimatedAmount?: number | null;
+        paymentStatus?: 'unpaid' | 'paid' | null;
       };
       if (!body.id) return badRequest(res, 'id is required');
 
@@ -164,13 +193,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!previousJob) return badRequest(res, 'Service job not found');
 
       const updates: Record<string, unknown> = {};
-      if (body.status) updates.status = body.status;
+      if (body.status) {
+        const internalStatus = mapJobUiStatusToInternal(body.status)[0] || body.status;
+        updates.status = internalStatus;
+        updates.completed_at = internalStatus === 'completed' ? new Date().toISOString() : null;
+      }
       if (typeof body.scheduledAt !== 'undefined') updates.scheduled_at = body.scheduledAt || null;
       if (typeof body.assigneeId !== 'undefined') updates.assignee_id = body.assigneeId || null;
       if (typeof body.notes !== 'undefined') updates.notes = body.notes || null;
       if (typeof body.serviceType !== 'undefined') updates.service_type = body.serviceType;
       if (typeof body.clientName !== 'undefined') updates.client_name = body.clientName;
       if (typeof body.clientId !== 'undefined') updates.client_id = body.clientId || null;
+      if (typeof body.vehicleMake !== 'undefined') updates.vehicle_make = body.vehicleMake || null;
+      if (typeof body.vehicleModel !== 'undefined') updates.vehicle_model = body.vehicleModel || null;
+      if (typeof body.vehicleYear !== 'undefined') updates.vehicle_year = body.vehicleYear || null;
+      if (typeof body.estimatedAmount === 'number') updates.estimated_amount = body.estimatedAmount;
+      if (typeof body.paymentStatus !== 'undefined') updates.payment_status = body.paymentStatus || 'unpaid';
 
       if (!Object.keys(updates).length) return badRequest(res, 'No updates provided');
 
@@ -227,7 +265,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         });
       }
 
-      return res.status(200).json({ serviceJob: data });
+      return res.status(200).json({
+        serviceJob: {
+          ...data,
+          ui_status: mapJobToUiStatus(data.status),
+        },
+      });
     }
 
     return methodNotAllowed(res);

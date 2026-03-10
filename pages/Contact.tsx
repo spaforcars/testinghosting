@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { MapPin, Phone, Mail, Clock } from 'lucide-react';
 import Button from '../components/Button';
 import { apiRequest, ApiError } from '../lib/apiClient';
@@ -17,6 +17,15 @@ const Contact: React.FC = () => {
     subject: 'General Inquiry',
     message: '',
   });
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); observer.unobserve(e.target); } }),
+      { threshold: 0.1 }
+    );
+    document.querySelectorAll('.sr, .stagger').forEach(el => observer.observe(el));
+    return () => observer.disconnect();
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -51,9 +60,9 @@ const Contact: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-brand-gray">
-      <section className="border-b border-neutral-200 bg-gradient-to-b from-white to-neutral-50 px-4 py-16 md:py-20">
+      <section className="sr border-b border-black/[0.06] bg-white px-4 py-16 md:py-20">
         <div className="mx-auto max-w-7xl">
-          <span className="inline-block rounded-full bg-orange-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.08em] text-brand-mclaren">
+          <span className="inline-block rounded-full bg-brand-mclaren/10 border border-brand-mclaren/30 text-brand-mclaren text-[11px] tracking-[0.15em] font-semibold px-4 py-1.5 uppercase">
             Contact
           </span>
           <h1 className="mt-5 max-w-4xl font-display text-4xl font-bold uppercase leading-[0.95] text-brand-black md:text-6xl">
@@ -67,7 +76,7 @@ const Contact: React.FC = () => {
 
       <section className="px-4 py-16 md:py-20">
         <div className="mx-auto grid max-w-7xl gap-6 lg:grid-cols-2">
-          <div className="rounded-2xl border border-neutral-200 bg-white p-8 shadow-sm md:p-10">
+          <div className="sr rounded-2xl border border-black/[0.06] bg-white p-8 shadow-[0_1px_3px_rgba(0,0,0,0.04)] md:p-10">
             <h2 className="font-display text-3xl font-semibold uppercase text-brand-black">Send A Message</h2>
 
             {formStatus === 'success' ? (
@@ -87,7 +96,7 @@ const Contact: React.FC = () => {
                     type="text"
                     value={formData.fullName}
                     onChange={(e) => setFormData((prev) => ({ ...prev, fullName: e.target.value }))}
-                    className="w-full rounded-lg border border-neutral-300 bg-white px-4 py-3 text-sm text-brand-black focus:border-brand-mclaren focus:outline-none"
+                    className="w-full rounded-lg border border-neutral-300 bg-white px-4 py-3 text-sm text-brand-black focus:border-brand-mclaren focus:outline-none focus:ring-2 focus:ring-brand-mclaren/20"
                     placeholder="John Doe"
                   />
                 </div>
@@ -98,7 +107,7 @@ const Contact: React.FC = () => {
                     type="email"
                     value={formData.email}
                     onChange={(e) => setFormData((prev) => ({ ...prev, email: e.target.value }))}
-                    className="w-full rounded-lg border border-neutral-300 bg-white px-4 py-3 text-sm text-brand-black focus:border-brand-mclaren focus:outline-none"
+                    className="w-full rounded-lg border border-neutral-300 bg-white px-4 py-3 text-sm text-brand-black focus:border-brand-mclaren focus:outline-none focus:ring-2 focus:ring-brand-mclaren/20"
                     placeholder="you@example.com"
                   />
                 </div>
@@ -107,7 +116,7 @@ const Contact: React.FC = () => {
                   <select
                     value={formData.subject}
                     onChange={(e) => setFormData((prev) => ({ ...prev, subject: e.target.value }))}
-                    className="w-full rounded-lg border border-neutral-300 bg-white px-4 py-3 text-sm text-brand-black focus:border-brand-mclaren focus:outline-none"
+                    className="w-full rounded-lg border border-neutral-300 bg-white px-4 py-3 text-sm text-brand-black focus:border-brand-mclaren focus:outline-none focus:ring-2 focus:ring-brand-mclaren/20"
                   >
                     <option>General Inquiry</option>
                     <option>Booking Request</option>
@@ -121,7 +130,7 @@ const Contact: React.FC = () => {
                     required
                     value={formData.message}
                     onChange={(e) => setFormData((prev) => ({ ...prev, message: e.target.value }))}
-                    className="h-32 w-full rounded-lg border border-neutral-300 bg-white px-4 py-3 text-sm text-brand-black focus:border-brand-mclaren focus:outline-none"
+                    className="h-32 w-full rounded-lg border border-neutral-300 bg-white px-4 py-3 text-sm text-brand-black focus:border-brand-mclaren focus:outline-none focus:ring-2 focus:ring-brand-mclaren/20"
                     placeholder="How can we help?"
                   />
                 </div>
@@ -134,8 +143,8 @@ const Contact: React.FC = () => {
           </div>
 
           <div className="space-y-6">
-            <div className="grid gap-6 sm:grid-cols-2">
-              <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm">
+            <div className="sr stagger grid gap-6 sm:grid-cols-2">
+              <div className="rounded-2xl border border-black/[0.06] bg-white p-6 shadow-[0_1px_3px_rgba(0,0,0,0.04)] card-hover">
                 <div className="flex items-center gap-2 text-brand-mclaren">
                   <MapPin className="h-5 w-5" />
                   <h3 className="font-display text-lg font-semibold uppercase text-brand-black">Visit Us</h3>
@@ -149,7 +158,7 @@ const Contact: React.FC = () => {
                   ))}
                 </p>
               </div>
-              <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm">
+              <div className="rounded-2xl border border-black/[0.06] bg-white p-6 shadow-[0_1px_3px_rgba(0,0,0,0.04)] card-hover">
                 <div className="flex items-center gap-2 text-brand-mclaren">
                   <Clock className="h-5 w-5" />
                   <h3 className="font-display text-lg font-semibold uppercase text-brand-black">Hours</h3>
@@ -162,7 +171,7 @@ const Contact: React.FC = () => {
                   Sun: By Appointment
                 </p>
               </div>
-              <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm">
+              <div className="rounded-2xl border border-black/[0.06] bg-white p-6 shadow-[0_1px_3px_rgba(0,0,0,0.04)] card-hover">
                 <div className="flex items-center gap-2 text-brand-mclaren">
                   <Phone className="h-5 w-5" />
                   <h3 className="font-display text-lg font-semibold uppercase text-brand-black">Phone</h3>
@@ -171,7 +180,7 @@ const Contact: React.FC = () => {
                   (416) 986-4746
                 </a>
               </div>
-              <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm">
+              <div className="rounded-2xl border border-black/[0.06] bg-white p-6 shadow-[0_1px_3px_rgba(0,0,0,0.04)] card-hover">
                 <div className="flex items-center gap-2 text-brand-mclaren">
                   <Mail className="h-5 w-5" />
                   <h3 className="font-display text-lg font-semibold uppercase text-brand-black">Email</h3>
@@ -182,7 +191,7 @@ const Contact: React.FC = () => {
               </div>
             </div>
 
-            <div className="overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm">
+            <div className="overflow-hidden rounded-2xl border border-black/[0.06] bg-white shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
               <div className="h-[340px]">
                 <iframe
                   src={content.mapEmbedUrl}

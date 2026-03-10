@@ -56,7 +56,7 @@ const BeforeAfterSlider: React.FC<BeforeAfterProps> = ({ beforeImage, afterImage
 
   return (
     <div
-      className="group relative h-[380px] w-full select-none overflow-hidden rounded-2xl border border-neutral-200 bg-neutral-100 shadow-sm sm:h-[440px] lg:h-[500px]"
+      className="group relative h-[380px] w-full select-none overflow-hidden rounded-2xl border border-black/[0.06] bg-neutral-100 shadow-[0_1px_3px_rgba(0,0,0,0.04)] sm:h-[440px] lg:h-[500px]"
          ref={containerRef}
          onMouseDown={handleMouseDown}
          onMouseMove={handleMouseMove}
@@ -66,7 +66,7 @@ const BeforeAfterSlider: React.FC<BeforeAfterProps> = ({ beforeImage, afterImage
          onTouchEnd={handleTouchEnd}
     >
       {/* After Image (Background) */}
-      <div 
+      <div
         className="absolute inset-0 w-full h-full bg-cover bg-center"
         style={{ backgroundImage: `url(${afterImage})` }}
       >
@@ -76,20 +76,20 @@ const BeforeAfterSlider: React.FC<BeforeAfterProps> = ({ beforeImage, afterImage
       </div>
 
       {/* Before Image (Clipped) */}
-      <div 
+      <div
         className="absolute inset-0 h-full border-r-2 border-white/80 bg-cover bg-center"
-        style={{ 
+        style={{
           backgroundImage: `url(${beforeImage})`,
-          width: `${sliderPosition}%` 
+          width: `${sliderPosition}%`
         }}
       >
-        <div className="absolute left-4 top-4 rounded-md border border-neutral-200 bg-white/95 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-brand-black">
+        <div className="absolute left-4 top-4 rounded-md border border-black/[0.06] bg-white/95 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-brand-black">
           Before
         </div>
       </div>
 
       {/* Slider Handle */}
-      <div 
+      <div
         className="absolute bottom-0 top-0 z-10 flex w-1 cursor-ew-resize items-center justify-center bg-white/90"
         style={{ left: `${sliderPosition}%` }}
       >
@@ -97,10 +97,10 @@ const BeforeAfterSlider: React.FC<BeforeAfterProps> = ({ beforeImage, afterImage
           <ChevronsLeftRight className="h-5 w-5" />
         </div>
       </div>
-      
+
       {/* Label */}
       {label && (
-        <div className="pointer-events-none absolute bottom-4 left-4 z-20 rounded-md border border-neutral-200 bg-white/95 px-4 py-2">
+        <div className="pointer-events-none absolute bottom-4 left-4 z-20 rounded-md border border-black/[0.06] bg-white/95 px-4 py-2">
           <span className="font-display text-sm font-semibold uppercase tracking-[0.08em] text-brand-black sm:text-base">
             {label}
           </span>

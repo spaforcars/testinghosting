@@ -26,7 +26,34 @@ export const createInAppNotification = async (
 
   if (error) {
     console.warn('Failed to create in-app notification:', error.message);
+    return false;
   }
+  return true;
+};
+
+export const createUniqueInAppNotification = async (
+  supabase: SupabaseClient,
+  recipientUserId: string,
+  payload: NotificationPayload
+) => {
+  const { data, error } = await supabase
+    .from('in_app_notifications')
+    .select('id')
+    .eq('recipient_user_id', recipientUserId)
+    .eq('category', payload.category || 'system')
+    .eq('entity_type', payload.entityType || null)
+    .eq('entity_id', payload.entityId || null)
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    console.warn('Failed to check for duplicate in-app notification:', error.message);
+    return false;
+  }
+
+  if (data?.id) return false;
+
+  return createInAppNotification(supabase, recipientUserId, payload);
 };
 
 export const notifyRoles = async (

@@ -5,16 +5,7 @@ import { badRequest, forbidden, methodNotAllowed, serverError, unauthorized } fr
 import { writeAuditLog } from '../_lib/audit';
 import { createInAppNotification } from '../_lib/inAppNotifications';
 import { isFeatureEnabled } from '../_lib/featureFlags';
-
-const allowedLeadStatuses = new Set([
-  'lead',
-  'contacted',
-  'quoted',
-  'booked',
-  'in_service',
-  'completed',
-  'closed_lost',
-]);
+import { mapLeadToUiStatus, mapLeadUiStatusToInternal } from '../_lib/dashboardStatus';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'PATCH') return methodNotAllowed(res);
@@ -37,6 +28,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       serviceType?: string | null;
       sourcePage?: string;
       phone?: string | null;
+      email?: string | null;
+      vehicleMake?: string | null;
+      vehicleModel?: string | null;
+      vehicleYear?: number | null;
       notes?: string | null;
     };
 
@@ -45,13 +40,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       typeof body.assigneeId === 'undefined' &&
       typeof body.serviceType === 'undefined' &&
       typeof body.sourcePage === 'undefined' &&
-      typeof body.phone === 'undefined'
+      typeof body.phone === 'undefined' &&
+      typeof body.email === 'undefined' &&
+      typeof body.vehicleMake === 'undefined' &&
+      typeof body.vehicleModel === 'undefined' &&
+      typeof body.vehicleYear === 'undefined'
     ) {
       return badRequest(res, 'At least one update field is required');
-    }
-
-    if (body.status && !allowedLeadStatuses.has(body.status)) {
-      return badRequest(res, 'Invalid lead status');
     }
 
     const { data: currentLead } = await supabase
@@ -63,11 +58,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!currentLead) return badRequest(res, 'Lead not found');
 
     const updates: Record<string, unknown> = {};
-    if (body.status) updates.status = body.status;
+    if (body.status) updates.status = mapLeadUiStatusToInternal(body.status)[0] || body.status;
     if (typeof body.assigneeId !== 'undefined') updates.assignee_id = body.assigneeId || null;
     if (typeof body.serviceType !== 'undefined') updates.service_type = body.serviceType || null;
     if (typeof body.sourcePage !== 'undefined') updates.source_page = body.sourcePage || currentLead.source_page;
     if (typeof body.phone !== 'undefined') updates.phone = body.phone || null;
+    if (typeof body.email !== 'undefined') updates.email = body.email || currentLead.email;
+    if (typeof body.vehicleMake !== 'undefined') updates.vehicle_make = body.vehicleMake || null;
+    if (typeof body.vehicleModel !== 'undefined') updates.vehicle_model = body.vehicleModel || null;
+    if (typeof body.vehicleYear !== 'undefined') updates.vehicle_year = body.vehicleYear || null;
 
     const { data, error } = await supabase
       .from('leads')
@@ -101,7 +100,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       details: updates,
     });
 
-    return res.status(200).json({ lead: data });
+    return res.status(200).json({
+      lead: {
+        ...data,
+        ui_status: mapLeadToUiStatus(data.status),
+      },
+    });
   } catch (error) {
     return serverError(res, error);
   }

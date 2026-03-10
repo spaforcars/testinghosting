@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from '../_lib/supabaseAdmin';
 import { getRetryDelayMinutes, parseDefaultRecipients, sendEnquiryAlertEmail } from '../_lib/notifications';
 import { serverError } from '../_lib/http';
 import { writeAuditLog } from '../_lib/audit';
+import { createUniqueInAppNotification } from '../_lib/inAppNotifications';
 
 const hasCronAccess = (req: VercelRequest): boolean => {
   const secret = process.env.CRON_SECRET;
@@ -28,11 +29,59 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .eq('key', 'enquiry_alerts_enabled')
       .maybeSingle();
 
-    if (alertsSetting?.value === false) {
-      return res.status(200).json({ processed: 0, sent: 0, failed: 0, skipped: 'alerts_disabled' });
+    const nowDate = new Date();
+    const now = nowDate.toISOString();
+    let remindersCreated = 0;
+
+    const next24Hours = new Date(nowDate.getTime() + 24 * 60 * 60 * 1000).toISOString();
+    const startOfToday = new Date(nowDate);
+    startOfToday.setHours(0, 0, 0, 0);
+    const endOfToday = new Date(startOfToday);
+    endOfToday.setDate(endOfToday.getDate() + 1);
+
+    const { data: reminderJobs, error: reminderJobsError } = await supabase
+      .from('service_jobs')
+      .select('id, client_name, service_type, scheduled_at, assignee_id')
+      .not('assignee_id', 'is', null)
+      .neq('status', 'cancelled')
+      .not('scheduled_at', 'is', null)
+      .lte('scheduled_at', next24Hours);
+
+    if (reminderJobsError) throw new Error(reminderJobsError.message);
+
+    for (const job of reminderJobs || []) {
+      const scheduledAt = job.scheduled_at ? new Date(job.scheduled_at) : null;
+      if (!scheduledAt) continue;
+
+      if (scheduledAt >= nowDate && scheduledAt <= new Date(next24Hours)) {
+        const created = await createUniqueInAppNotification(supabase, job.assignee_id, {
+          category: 'appointment_reminder_24h',
+          title: 'Appointment reminder: tomorrow / next 24h',
+          message: `${job.client_name} | ${job.service_type} at ${scheduledAt.toLocaleString()}`,
+          entityType: 'service_job',
+          entityId: job.id,
+          metadata: { reminderType: '24h', scheduledAt: job.scheduled_at },
+        });
+        if (created) remindersCreated += 1;
+      }
+
+      if (nowDate.getHours() < 12 && scheduledAt >= startOfToday && scheduledAt < endOfToday) {
+        const created = await createUniqueInAppNotification(supabase, job.assignee_id, {
+          category: 'appointment_reminder_same_day',
+          title: 'Appointment reminder: today',
+          message: `${job.client_name} | ${job.service_type} at ${scheduledAt.toLocaleString()}`,
+          entityType: 'service_job',
+          entityId: job.id,
+          metadata: { reminderType: 'same_day', scheduledAt: job.scheduled_at },
+        });
+        if (created) remindersCreated += 1;
+      }
     }
 
-    const now = new Date().toISOString();
+    if (alertsSetting?.value === false) {
+      return res.status(200).json({ processed: 0, sent: 0, failed: 0, remindersCreated, skipped: 'alerts_disabled' });
+    }
+
     const { data: events, error } = await supabase
       .from('notification_events')
       .select('*')
@@ -146,6 +195,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       processed: events.length,
       sent,
       failed,
+      remindersCreated,
     });
   } catch (error) {
     return serverError(res, error);

@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from './_lib/supabaseAdmin';
 import { badRequest, forbidden, methodNotAllowed, serverError, unauthorized } from './_lib/http';
 import { writeAuditLog } from './_lib/audit';
 import { isFeatureEnabled } from './_lib/featureFlags';
+import { mapLeadToUiStatus, mapLeadUiStatusToInternal } from './_lib/dashboardStatus';
 
 const allowedLeadStatuses = new Set([
   'lead',
@@ -50,7 +51,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .order('created_at', { ascending: false });
 
       if (req.query.status) {
-        query = query.eq('status', String(req.query.status));
+        const statuses = mapLeadUiStatusToInternal(String(req.query.status));
+        query = statuses.length > 1 ? query.in('status', statuses) : query.eq('status', statuses[0]);
       }
       if (req.query.sourcePage) {
         query = query.eq('source_page', String(req.query.sourcePage));
@@ -81,7 +83,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (term) {
           const escaped = term.replace(/,/g, ' ').replace(/%/g, '');
           query = query.or(
-            `name.ilike.%${escaped}%,email.ilike.%${escaped}%,phone.ilike.%${escaped}%,service_type.ilike.%${escaped}%`
+            `name.ilike.%${escaped}%,email.ilike.%${escaped}%,phone.ilike.%${escaped}%,service_type.ilike.%${escaped}%,vehicle_make.ilike.%${escaped}%,vehicle_model.ilike.%${escaped}%`
           );
         }
       }
@@ -93,7 +95,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const totalPages = total > 0 ? Math.ceil(total / pageSize) : 1;
 
       return res.status(200).json({
-        leads: data || [],
+        leads: (data || []).map((lead) => ({
+          ...lead,
+          ui_status: mapLeadToUiStatus(lead.status),
+        })),
         pagination: {
           page,
           pageSize,
@@ -113,24 +118,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         sourcePage?: string;
         status?: string;
         assigneeId?: string | null;
+        vehicleMake?: string | null;
+        vehicleModel?: string | null;
+        vehicleYear?: number | null;
       };
 
-      if (!body.name || !body.email || !body.sourcePage) {
-        return badRequest(res, 'name, email and sourcePage are required');
+      if (!body.name || !body.phone || !body.sourcePage) {
+        return badRequest(res, 'name, phone and sourcePage are required');
       }
 
-      const status = body.status && allowedLeadStatuses.has(body.status) ? body.status : 'lead';
+      const status = body.status
+        ? mapLeadUiStatusToInternal(body.status)[0] || 'lead'
+        : 'lead';
 
       const { data, error } = await supabase
         .from('leads')
         .insert({
           name: body.name,
-          email: body.email,
+          email: body.email || `${body.phone.replace(/\s+/g, '')}@placeholder.local`,
           phone: body.phone || null,
           service_type: body.serviceType || null,
           source_page: body.sourcePage,
           status,
           assignee_id: body.assigneeId || null,
+          vehicle_make: body.vehicleMake || null,
+          vehicle_model: body.vehicleModel || null,
+          vehicle_year: typeof body.vehicleYear === 'number' ? body.vehicleYear : null,
         })
         .select('*')
         .single();
@@ -145,7 +158,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         entityId: data.id,
       });
 
-      return res.status(201).json({ lead: data });
+      return res.status(201).json({
+        lead: {
+          ...data,
+          ui_status: mapLeadToUiStatus(data.status),
+        },
+      });
     }
 
     return methodNotAllowed(res);

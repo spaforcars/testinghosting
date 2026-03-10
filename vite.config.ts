@@ -6,12 +6,12 @@ export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, '.', '');
     return {
       server: {
-        port: 3000,
+        port: 3001,
         host: '0.0.0.0',
         proxy: {
           // Allow a standalone Vite dev server to forward API requests to the Express backend.
           '/api': {
-            target: env.VITE_API_PROXY_TARGET || 'http://localhost:3000',
+            target: env.VITE_API_PROXY_TARGET || 'http://localhost:3001',
             changeOrigin: true,
           },
         },

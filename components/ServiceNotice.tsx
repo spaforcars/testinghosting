@@ -27,7 +27,7 @@ const ServiceNotice: React.FC = () => {
   }, []);
 
   return (
-    <div className="bg-white px-4 py-5 text-center">
+    <div className="border-t border-black/[0.06] bg-white px-4 py-5 text-center">
       <p className="text-sm text-gray-600">
         {notice}
       </p>
