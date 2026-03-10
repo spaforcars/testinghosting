@@ -74,7 +74,7 @@ Important ones:
 
 ## Cron Retry
 `vercel.json` includes:
-- `/api/cron/retry-notifications` every 5 minutes.
+- `/api/cron/retry-notifications` once per day at 09:00 UTC.
 
 Set `CRON_SECRET` and send `x-cron-secret` header from your scheduler if you want extra protection.
 

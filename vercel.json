@@ -3,7 +3,7 @@
   "outputDirectory": "dist",
   "framework": "vite",
   "crons": [
-    { "path": "/api/cron/retry-notifications", "schedule": "*/5 * * * *" }
+    { "path": "/api/cron/retry-notifications", "schedule": "0 9 * * *" }
   ],
   "rewrites": [
     { "source": "/((?!api/).*)", "destination": "/index.html" }
