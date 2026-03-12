@@ -6,6 +6,7 @@ import { writeAuditLog } from './_lib/audit';
 import { createInAppNotification } from './_lib/inAppNotifications';
 import { isFeatureEnabled } from './_lib/featureFlags';
 import { mapJobToUiStatus, mapJobUiStatusToInternal } from './_lib/dashboardStatus';
+import { normalizeServiceAddonIds, normalizeServiceCatalogId } from './_lib/serviceSelection';
 
 const normalizePagination = (req: VercelRequest) => {
   const rawPage = Number(req.query.page || 1);
@@ -88,6 +89,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         clientId?: string;
         clientName?: string;
         serviceType?: string;
+        serviceCatalogId?: string | null;
+        serviceAddonIds?: string[] | null;
         status?: string;
         scheduledAt?: string | null;
         assigneeId?: string | null;
@@ -101,6 +104,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!body.clientName || !body.serviceType) {
         return badRequest(res, 'clientName and serviceType are required');
       }
+      const serviceCatalogId = normalizeServiceCatalogId(body.serviceCatalogId);
+      const serviceAddonIds = normalizeServiceAddonIds(body.serviceAddonIds);
 
       const { data, error } = await supabase
         .from('service_jobs')
@@ -109,6 +114,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           client_id: body.clientId || null,
           client_name: body.clientName,
           service_type: body.serviceType,
+          service_catalog_id: serviceCatalogId,
+          service_addon_ids: serviceAddonIds.length ? serviceAddonIds : null,
           status: mapJobUiStatusToInternal(body.status || 'scheduled')[0] || 'booked',
           scheduled_at: body.scheduledAt || null,
           assignee_id: body.assigneeId || null,
@@ -175,6 +182,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         assigneeId?: string | null;
         notes?: string | null;
         serviceType?: string;
+        serviceCatalogId?: string | null;
+        serviceAddonIds?: string[] | null;
         clientName?: string;
         clientId?: string | null;
         vehicleMake?: string | null;
@@ -202,6 +211,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (typeof body.assigneeId !== 'undefined') updates.assignee_id = body.assigneeId || null;
       if (typeof body.notes !== 'undefined') updates.notes = body.notes || null;
       if (typeof body.serviceType !== 'undefined') updates.service_type = body.serviceType;
+      if (typeof body.serviceCatalogId !== 'undefined') {
+        updates.service_catalog_id = normalizeServiceCatalogId(body.serviceCatalogId);
+      }
+      if (typeof body.serviceAddonIds !== 'undefined') {
+        const serviceAddonIds = normalizeServiceAddonIds(body.serviceAddonIds);
+        updates.service_addon_ids = serviceAddonIds.length ? serviceAddonIds : null;
+      }
       if (typeof body.clientName !== 'undefined') updates.client_name = body.clientName;
       if (typeof body.clientId !== 'undefined') updates.client_id = body.clientId || null;
       if (typeof body.vehicleMake !== 'undefined') updates.vehicle_make = body.vehicleMake || null;

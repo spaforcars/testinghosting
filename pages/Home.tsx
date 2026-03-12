@@ -5,6 +5,7 @@ import ServiceNotice from '../components/ServiceNotice';
 import Button from '../components/Button';
 import { defaultHomePageContent, defaultServicesPageContent } from '../lib/cmsDefaults';
 import { adaptHomeContent, adaptServicesContent } from '../lib/contentAdapter';
+import { getFeaturedOfferings } from '../lib/serviceCatalog';
 import { useCmsPage } from '../hooks/useCmsPage';
 import { useCmsPromos } from '../hooks/useCmsPromos';
 
@@ -24,9 +25,9 @@ const Home: React.FC = () => {
   const showcaseServices =
     content.showcaseServices.length > 0
       ? content.showcaseServices
-      : servicesContent.services.slice(0, 3).map((service) => ({
+      : getFeaturedOfferings(servicesContent).map((service) => ({
           title: service.title,
-          price: service.price,
+          price: service.priceLabel,
           image: service.image,
           bookingServiceId: service.id,
         }));

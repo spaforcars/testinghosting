@@ -4,6 +4,7 @@ import { badRequest, methodNotAllowed, serverError } from './_lib/http';
 import { getRetryDelayMinutes, parseDefaultRecipients, sendEnquiryAlertEmail } from './_lib/notifications';
 import { writeAuditLog } from './_lib/audit';
 import { notifyRoles } from './_lib/inAppNotifications';
+import { normalizeServiceAddonIds, normalizeServiceCatalogId } from './_lib/serviceSelection';
 
 interface CreateEnquiryBody {
   name?: string;
@@ -11,6 +12,8 @@ interface CreateEnquiryBody {
   phone?: string;
   message?: string;
   serviceType?: string;
+  serviceCatalogId?: string;
+  serviceAddonIds?: string[];
   sourcePage?: string;
   metadata?: Record<string, unknown>;
 }
@@ -47,6 +50,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const supabase = getSupabaseAdmin();
     const now = new Date().toISOString();
+    const serviceCatalogId = normalizeServiceCatalogId(body.serviceCatalogId);
+    const serviceAddonIds = normalizeServiceAddonIds(body.serviceAddonIds);
 
     const { data: enquiry, error: enquiryError } = await supabase
       .from('enquiries')
@@ -56,6 +61,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         phone: body.phone || null,
         message: body.message,
         service_type: body.serviceType || null,
+        service_catalog_id: serviceCatalogId,
+        service_addon_ids: serviceAddonIds.length ? serviceAddonIds : null,
         source_page: body.sourcePage,
         metadata: body.metadata || {},
       })
@@ -74,6 +81,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         email: enquiry.email,
         phone: enquiry.phone,
         service_type: enquiry.service_type,
+        service_catalog_id: enquiry.service_catalog_id,
+        service_addon_ids: enquiry.service_addon_ids,
         source_page: enquiry.source_page,
         status: 'lead',
       })

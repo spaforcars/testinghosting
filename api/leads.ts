@@ -5,6 +5,7 @@ import { badRequest, forbidden, methodNotAllowed, serverError, unauthorized } fr
 import { writeAuditLog } from './_lib/audit';
 import { isFeatureEnabled } from './_lib/featureFlags';
 import { mapLeadToUiStatus, mapLeadUiStatusToInternal } from './_lib/dashboardStatus';
+import { normalizeServiceAddonIds, normalizeServiceCatalogId } from './_lib/serviceSelection';
 
 const allowedLeadStatuses = new Set([
   'lead',
@@ -115,6 +116,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         email?: string;
         phone?: string;
         serviceType?: string;
+        serviceCatalogId?: string | null;
+        serviceAddonIds?: string[] | null;
         sourcePage?: string;
         status?: string;
         assigneeId?: string | null;
@@ -130,6 +133,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const status = body.status
         ? mapLeadUiStatusToInternal(body.status)[0] || 'lead'
         : 'lead';
+      const serviceCatalogId = normalizeServiceCatalogId(body.serviceCatalogId);
+      const serviceAddonIds = normalizeServiceAddonIds(body.serviceAddonIds);
 
       const { data, error } = await supabase
         .from('leads')
@@ -138,6 +143,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           email: body.email || `${body.phone.replace(/\s+/g, '')}@placeholder.local`,
           phone: body.phone || null,
           service_type: body.serviceType || null,
+          service_catalog_id: serviceCatalogId,
+          service_addon_ids: serviceAddonIds.length ? serviceAddonIds : null,
           source_page: body.sourcePage,
           status,
           assignee_id: body.assigneeId || null,

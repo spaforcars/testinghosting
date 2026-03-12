@@ -53,25 +53,52 @@ export interface HomePageContent {
   promoPlacements: PromoPlacement[];
 }
 
-export interface CmsServiceCard {
+export type ServiceOfferingCategory =
+  | 'detailing'
+  | 'maintenance'
+  | 'protection'
+  | 'tint'
+  | 'restoration'
+  | 'add_on';
+
+export interface ServiceOffering {
   id: string;
   title: string;
+  shortTitle?: string;
   description: string;
-  category: string;
-  price: string;
-  duration: string;
+  category: ServiceOfferingCategory;
+  priceLabel: string;
+  fixedPriceAmount?: number;
+  duration?: string;
   image: string;
   features: string[];
-  idealFor?: string;
-  process?: string;
   notes?: string;
+  bookable: boolean;
+  addOnOnly: boolean;
+}
+
+export interface DetailingPackageRow {
+  vehicleType: string;
+  fullDetailId: string;
+  interiorOnlyId: string;
 }
 
 export interface ServicesPageContent {
   badge: string;
   title: string;
   subtitle: string;
-  services: CmsServiceCard[];
+  detailingPackagesTitle: string;
+  detailingOfferings: ServiceOffering[];
+  detailingPackages: DetailingPackageRow[];
+  exteriorIncludesTitle: string;
+  exteriorIncludes: string[];
+  interiorIncludesTitle: string;
+  interiorIncludes: string[];
+  specialtyServicesTitle: string;
+  specialtyServices: ServiceOffering[];
+  additionalServicesTitle: string;
+  additionalServices: ServiceOffering[];
+  featuredOfferingIds: string[];
 }
 
 export interface FleetPageContent {

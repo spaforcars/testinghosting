@@ -6,6 +6,7 @@ import { writeAuditLog } from '../_lib/audit';
 import { createInAppNotification } from '../_lib/inAppNotifications';
 import { isFeatureEnabled } from '../_lib/featureFlags';
 import { mapLeadToUiStatus, mapLeadUiStatusToInternal } from '../_lib/dashboardStatus';
+import { normalizeServiceAddonIds, normalizeServiceCatalogId } from '../_lib/serviceSelection';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'PATCH') return methodNotAllowed(res);
@@ -26,6 +27,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       status?: string;
       assigneeId?: string | null;
       serviceType?: string | null;
+      serviceCatalogId?: string | null;
+      serviceAddonIds?: string[] | null;
       sourcePage?: string;
       phone?: string | null;
       email?: string | null;
@@ -39,6 +42,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       !body.status &&
       typeof body.assigneeId === 'undefined' &&
       typeof body.serviceType === 'undefined' &&
+      typeof body.serviceCatalogId === 'undefined' &&
+      typeof body.serviceAddonIds === 'undefined' &&
       typeof body.sourcePage === 'undefined' &&
       typeof body.phone === 'undefined' &&
       typeof body.email === 'undefined' &&
@@ -61,6 +66,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (body.status) updates.status = mapLeadUiStatusToInternal(body.status)[0] || body.status;
     if (typeof body.assigneeId !== 'undefined') updates.assignee_id = body.assigneeId || null;
     if (typeof body.serviceType !== 'undefined') updates.service_type = body.serviceType || null;
+    if (typeof body.serviceCatalogId !== 'undefined') {
+      updates.service_catalog_id = normalizeServiceCatalogId(body.serviceCatalogId);
+    }
+    if (typeof body.serviceAddonIds !== 'undefined') {
+      const serviceAddonIds = normalizeServiceAddonIds(body.serviceAddonIds);
+      updates.service_addon_ids = serviceAddonIds.length ? serviceAddonIds : null;
+    }
     if (typeof body.sourcePage !== 'undefined') updates.source_page = body.sourcePage || currentLead.source_page;
     if (typeof body.phone !== 'undefined') updates.phone = body.phone || null;
     if (typeof body.email !== 'undefined') updates.email = body.email || currentLead.email;

@@ -20,6 +20,8 @@ export interface Enquiry {
   phone?: string | null;
   message: string;
   service_type?: string | null;
+  service_catalog_id?: string | null;
+  service_addon_ids?: string[] | null;
   source_page: string;
   metadata?: Record<string, unknown> | null;
   created_at: string;
@@ -32,6 +34,8 @@ export interface Lead {
   email: string;
   phone?: string | null;
   service_type?: string | null;
+  service_catalog_id?: string | null;
+  service_addon_ids?: string[] | null;
   source_page: string;
   status: LeadStatus;
   ui_status?: LeadUiStatus;
@@ -92,6 +96,8 @@ export interface ServiceJob {
   client_id?: string | null;
   client_name: string;
   service_type: string;
+  service_catalog_id?: string | null;
+  service_addon_ids?: string[] | null;
   status: string;
   ui_status?: JobUiStatus;
   scheduled_at?: string | null;

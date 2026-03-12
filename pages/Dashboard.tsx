@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+ï»¿import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Bell,
   CalendarDays,
@@ -10,6 +10,19 @@ import {
 } from 'lucide-react';
 import AuthGate from '../components/AuthGate';
 import { ApiError, apiRequest } from '../lib/apiClient';
+import { useCmsPage } from '../hooks/useCmsPage';
+import { adaptServicesContent } from '../lib/contentAdapter';
+import { defaultServicesPageContent } from '../lib/cmsDefaults';
+import {
+  buildServiceLabel,
+  findOfferingByTitle,
+  getAddOnOfferings,
+  getOfferingById,
+  getPrimaryOfferings,
+  groupOfferingsByCategory,
+  resolveServiceDisplay,
+} from '../lib/serviceCatalog';
+import type { ServiceOffering } from '../types/cms';
 import type {
   ClientRecord,
   CustomerVehicle,
@@ -109,6 +122,9 @@ type LeadFormState = {
   phone: string;
   email: string;
   serviceType: string;
+  serviceCatalogId: string;
+  serviceAddonIds: string[];
+  customServiceType: string;
   vehicleMake: string;
   vehicleModel: string;
   vehicleYear: string;
@@ -119,6 +135,9 @@ type JobFormState = {
   clientId: string;
   clientName: string;
   serviceType: string;
+  serviceCatalogId: string;
+  serviceAddonIds: string[];
+  customServiceType: string;
   scheduledAt: string;
   vehicleMake: string;
   vehicleModel: string;
@@ -153,6 +172,9 @@ const emptyLeadForm: LeadFormState = {
   phone: '',
   email: '',
   serviceType: '',
+  serviceCatalogId: '',
+  serviceAddonIds: [],
+  customServiceType: '',
   vehicleMake: '',
   vehicleModel: '',
   vehicleYear: '',
@@ -163,6 +185,9 @@ const emptyJobForm: JobFormState = {
   clientId: '',
   clientName: '',
   serviceType: '',
+  serviceCatalogId: '',
+  serviceAddonIds: [],
+  customServiceType: '',
   scheduledAt: '',
   vehicleMake: '',
   vehicleModel: '',
@@ -280,10 +305,146 @@ const Dashboard: React.FC = () => {
   const [submittingJob, setSubmittingJob] = useState(false);
   const [savingCustomer, setSavingCustomer] = useState(false);
   const [search, setSearch] = useState('');
+  const { data: servicesCmsData } = useCmsPage('services', defaultServicesPageContent);
+  const servicesContent = useMemo(
+    () => adaptServicesContent(servicesCmsData),
+    [servicesCmsData]
+  );
+  const primaryServiceOfferings = useMemo(
+    () => getPrimaryOfferings(servicesContent),
+    [servicesContent]
+  );
+  const addOnServiceOfferings = useMemo(
+    () => getAddOnOfferings(servicesContent),
+    [servicesContent]
+  );
+  const groupedPrimaryServiceOfferings = useMemo(
+    () => groupOfferingsByCategory(primaryServiceOfferings),
+    [primaryServiceOfferings]
+  );
+
+  const resolveSelectedAddOns = useCallback(
+    (serviceAddonIds: string[]) =>
+      serviceAddonIds
+        .map((id) => getOfferingById(servicesContent, id))
+        .filter(Boolean) as ServiceOffering[],
+    [servicesContent]
+  );
+
+  const buildCatalogServicePayload = useCallback(
+    (serviceCatalogId: string, serviceAddonIds: string[], customServiceType: string) => {
+      if (!serviceCatalogId || serviceCatalogId === 'custom') {
+        return {
+          serviceType: customServiceType.trim(),
+          serviceCatalogId: null,
+          serviceAddonIds: [] as string[],
+        };
+      }
+
+      const primaryOffering = getOfferingById(servicesContent, serviceCatalogId);
+      if (!primaryOffering) {
+        return {
+          serviceType: customServiceType.trim(),
+          serviceCatalogId: null,
+          serviceAddonIds: [] as string[],
+        };
+      }
+
+      const addOns = resolveSelectedAddOns(serviceAddonIds);
+      return {
+        serviceType: buildServiceLabel(primaryOffering, addOns, primaryOffering.title),
+        serviceCatalogId: primaryOffering.id,
+        serviceAddonIds: addOns.map((offering) => offering.id),
+      };
+    },
+    [resolveSelectedAddOns, servicesContent]
+  );
+
+  const getPrefillAmount = useCallback(
+    (serviceCatalogId: string, serviceAddonIds: string[]) => {
+      if (!serviceCatalogId || serviceCatalogId === 'custom') return '';
+
+      const primaryOffering = getOfferingById(servicesContent, serviceCatalogId);
+      if (!primaryOffering?.fixedPriceAmount) return '';
+
+      const addOns = resolveSelectedAddOns(serviceAddonIds);
+      if (addOns.some((offering) => typeof offering.fixedPriceAmount !== 'number')) return '';
+
+      const total =
+        primaryOffering.fixedPriceAmount +
+        addOns.reduce((sum, offering) => sum + Number(offering.fixedPriceAmount || 0), 0);
+
+      return String(total);
+    },
+    [resolveSelectedAddOns, servicesContent]
+  );
+
+  const syncLeadServiceSelection = useCallback(
+    (
+      updates: Partial<Pick<LeadFormState, 'serviceCatalogId' | 'serviceAddonIds' | 'customServiceType'>>
+    ) => {
+      setLeadForm((current) => {
+        const next = { ...current, ...updates };
+        const payload = buildCatalogServicePayload(
+          next.serviceCatalogId,
+          next.serviceAddonIds,
+          next.customServiceType
+        );
+        return {
+          ...next,
+          serviceType: payload.serviceType,
+        };
+      });
+    },
+    [buildCatalogServicePayload]
+  );
+
+  const syncJobServiceSelection = useCallback(
+    (
+      updates: Partial<Pick<JobFormState, 'serviceCatalogId' | 'serviceAddonIds' | 'customServiceType'>>
+    ) => {
+      setJobForm((current) => {
+        const next = { ...current, ...updates };
+        const payload = buildCatalogServicePayload(
+          next.serviceCatalogId,
+          next.serviceAddonIds,
+          next.customServiceType
+        );
+        return {
+          ...next,
+          serviceType: payload.serviceType,
+          estimatedAmount: getPrefillAmount(next.serviceCatalogId, next.serviceAddonIds),
+        };
+      });
+    },
+    [buildCatalogServicePayload, getPrefillAmount]
+  );
 
   const selectedLead = useMemo(
     () => leads.find((lead) => lead.id === selectedLeadId) || null,
     [leads, selectedLeadId]
+  );
+
+  const getLeadServiceDisplay = useCallback(
+    (lead: Lead) =>
+      resolveServiceDisplay(
+        servicesContent,
+        lead.service_catalog_id,
+        lead.service_addon_ids,
+        lead.service_type
+      ),
+    [servicesContent]
+  );
+
+  const getJobServiceDisplay = useCallback(
+    (job: ServiceJob) =>
+      resolveServiceDisplay(
+        servicesContent,
+        job.service_catalog_id,
+        job.service_addon_ids,
+        job.service_type
+      ),
+    [servicesContent]
   );
 
   const filteredClients = useMemo(() => {
@@ -382,17 +543,26 @@ const Dashboard: React.FC = () => {
   };
 
   const prepareJobFromLead = (lead: Lead) => {
+    const matchedOffering =
+      getOfferingById(servicesContent, lead.service_catalog_id) || findOfferingByTitle(servicesContent, lead.service_type);
+    const serviceCatalogId = matchedOffering?.id || (lead.service_type ? 'custom' : '');
+    const serviceAddonIds = lead.service_addon_ids || [];
+    const customServiceType = matchedOffering ? '' : lead.service_type || '';
+
     setSelectedLeadId(lead.id);
     setActiveTab('jobs');
     setJobForm({
       clientId: '',
       clientName: lead.name,
       serviceType: lead.service_type || '',
+      serviceCatalogId,
+      serviceAddonIds,
+      customServiceType,
       scheduledAt: '',
       vehicleMake: lead.vehicle_make || '',
       vehicleModel: lead.vehicle_model || '',
       vehicleYear: lead.vehicle_year ? String(lead.vehicle_year) : '',
-      estimatedAmount: '',
+      estimatedAmount: getPrefillAmount(serviceCatalogId, serviceAddonIds),
       paymentStatus: 'unpaid',
       notes: '',
     });
@@ -403,13 +573,20 @@ const Dashboard: React.FC = () => {
     try {
       setSubmittingLead(true);
       setError(null);
+      const servicePayload = buildCatalogServicePayload(
+        leadForm.serviceCatalogId,
+        leadForm.serviceAddonIds,
+        leadForm.customServiceType
+      );
       await apiRequest('/api/leads', {
         method: 'POST',
         body: JSON.stringify({
           name: leadForm.name,
           phone: leadForm.phone,
           email: leadForm.email || undefined,
-          serviceType: leadForm.serviceType,
+          serviceType: servicePayload.serviceType,
+          serviceCatalogId: servicePayload.serviceCatalogId,
+          serviceAddonIds: servicePayload.serviceAddonIds,
           sourcePage: 'dashboard',
           status: leadForm.status,
           vehicleMake: leadForm.vehicleMake || null,
@@ -444,6 +621,11 @@ const Dashboard: React.FC = () => {
     try {
       setSubmittingJob(true);
       setError(null);
+      const jobServicePayload = buildCatalogServicePayload(
+        jobForm.serviceCatalogId,
+        jobForm.serviceAddonIds,
+        jobForm.customServiceType
+      );
 
       if (selectedLead) {
         await apiRequest(`/api/leads/${selectedLead.id}/convert`, {
@@ -453,11 +635,13 @@ const Dashboard: React.FC = () => {
               name: selectedLead.name,
               email: selectedLead.email || undefined,
               phone: selectedLead.phone || undefined,
-              notes: selectedLead.service_type ? `Requested: ${selectedLead.service_type}` : undefined,
+              notes: getLeadServiceDisplay(selectedLead) !== '-' ? `Requested: ${getLeadServiceDisplay(selectedLead)}` : undefined,
             },
             serviceJob: {
               clientName: jobForm.clientName || selectedLead.name,
-              serviceType: jobForm.serviceType || selectedLead.service_type || 'Detailing',
+              serviceType: jobServicePayload.serviceType || selectedLead.service_type || 'Detailing',
+              serviceCatalogId: jobServicePayload.serviceCatalogId,
+              serviceAddonIds: jobServicePayload.serviceAddonIds,
               status: 'scheduled',
               scheduledAt: jobForm.scheduledAt ? new Date(jobForm.scheduledAt).toISOString() : null,
               notes: jobForm.notes || null,
@@ -476,7 +660,9 @@ const Dashboard: React.FC = () => {
           body: JSON.stringify({
             clientId: jobForm.clientId || null,
             clientName: jobForm.clientName,
-            serviceType: jobForm.serviceType,
+            serviceType: jobServicePayload.serviceType,
+            serviceCatalogId: jobServicePayload.serviceCatalogId,
+            serviceAddonIds: jobServicePayload.serviceAddonIds,
             status: 'scheduled',
             scheduledAt: jobForm.scheduledAt ? new Date(jobForm.scheduledAt).toISOString() : null,
             vehicleMake: jobForm.vehicleMake || null,
@@ -587,7 +773,7 @@ const Dashboard: React.FC = () => {
           <>
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
               <MetricCard label="New Leads / Customers Today" value={metrics.newCustomersOrLeadsToday} helper={`${metrics.newLeadsToday} leads, ${metrics.newCustomersToday} customers`} />
-              <MetricCard label="Jobs Scheduled Today" value={metrics.jobsScheduledToday} helper="Booked appointments on today’s calendar" />
+              <MetricCard label="Jobs Scheduled Today" value={metrics.jobsScheduledToday} helper="Booked appointments on todayâ€™s calendar" />
               <MetricCard label="Active Customers" value={metrics.activeCustomers} helper="Clients with scheduled or in-service work" />
               <MetricCard label="Expected Revenue Today" value={currency(metrics.expectedRevenueToday)} helper={`${metrics.unreadNotifications} unread notifications`} accent />
             </div>
@@ -616,7 +802,7 @@ const Dashboard: React.FC = () => {
 
             {activeTab === 'overview' && (
               <div className="grid gap-6 lg:grid-cols-[1.25fr_0.95fr]">
-                <Panel title="Today’s Job List" subtitle="Quick view of the appointment queue">
+                <Panel title="Todayâ€™s Job List" subtitle="Quick view of the appointment queue">
                   <div className="space-y-3">
                     {sortedJobs.length ? (
                       sortedJobs.slice(0, 8).map((job) => (
@@ -624,7 +810,7 @@ const Dashboard: React.FC = () => {
                           <div className="flex items-start justify-between gap-3">
                             <div>
                               <div className="font-semibold text-brand-black">{job.client_name}</div>
-                              <div className="mt-1 text-sm text-gray-600">{job.service_type}</div>
+                              <div className="mt-1 text-sm text-gray-600">{getJobServiceDisplay(job)}</div>
                               <div className="mt-1 text-xs text-gray-500">
                                 {vehicleLabel(job)} | {fmtDateTime(job.scheduled_at)}
                               </div>
@@ -675,7 +861,30 @@ const Dashboard: React.FC = () => {
                     <Input label="Customer Name" value={leadForm.name} onChange={(value) => setLeadForm((current) => ({ ...current, name: value }))} required />
                     <Input label="Phone Number" value={leadForm.phone} onChange={(value) => setLeadForm((current) => ({ ...current, phone: value }))} required />
                     <Input label="Email (optional)" value={leadForm.email} onChange={(value) => setLeadForm((current) => ({ ...current, email: value }))} />
-                    <Input label="Service Requested" value={leadForm.serviceType} onChange={(value) => setLeadForm((current) => ({ ...current, serviceType: value }))} required />
+                    <ServiceCatalogField
+                      label="Service Requested"
+                      serviceCatalogId={leadForm.serviceCatalogId}
+                      serviceAddonIds={leadForm.serviceAddonIds}
+                      customServiceType={leadForm.customServiceType}
+                      groupedPrimaryOfferings={groupedPrimaryServiceOfferings}
+                      addOnOfferings={addOnServiceOfferings}
+                      onServiceCatalogIdChange={(value) =>
+                        syncLeadServiceSelection({
+                          serviceCatalogId: value,
+                          serviceAddonIds: value === 'custom' ? [] : leadForm.serviceAddonIds,
+                        })
+                      }
+                      onServiceAddonIdsChange={(value) =>
+                        syncLeadServiceSelection({
+                          serviceAddonIds: value,
+                        })
+                      }
+                      onCustomServiceTypeChange={(value) =>
+                        syncLeadServiceSelection({
+                          customServiceType: value,
+                        })
+                      }
+                    />
                     <div className="grid gap-4 sm:grid-cols-3">
                       <Input label="Vehicle Make" value={leadForm.vehicleMake} onChange={(value) => setLeadForm((current) => ({ ...current, vehicleMake: value }))} />
                       <Input label="Vehicle Model" value={leadForm.vehicleModel} onChange={(value) => setLeadForm((current) => ({ ...current, vehicleModel: value }))} />
@@ -712,7 +921,7 @@ const Dashboard: React.FC = () => {
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-600">{lead.phone || '-'}</td>
                         <td className="px-4 py-3 text-sm text-gray-600">{vehicleLabel(lead)}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{lead.service_type || '-'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600">{getLeadServiceDisplay(lead)}</td>
                         <td className="px-4 py-3">
                           <select
                             value={lead.ui_status || 'new_lead'}
@@ -754,7 +963,30 @@ const Dashboard: React.FC = () => {
                   )}
                   <form className="space-y-4" onSubmit={submitJob}>
                     <Input label="Customer Name" value={jobForm.clientName} onChange={(value) => setJobForm((current) => ({ ...current, clientName: value }))} required />
-                    <Input label="Service Booked" value={jobForm.serviceType} onChange={(value) => setJobForm((current) => ({ ...current, serviceType: value }))} required />
+                    <ServiceCatalogField
+                      label="Service Booked"
+                      serviceCatalogId={jobForm.serviceCatalogId}
+                      serviceAddonIds={jobForm.serviceAddonIds}
+                      customServiceType={jobForm.customServiceType}
+                      groupedPrimaryOfferings={groupedPrimaryServiceOfferings}
+                      addOnOfferings={addOnServiceOfferings}
+                      onServiceCatalogIdChange={(value) =>
+                        syncJobServiceSelection({
+                          serviceCatalogId: value,
+                          serviceAddonIds: value === 'custom' ? [] : jobForm.serviceAddonIds,
+                        })
+                      }
+                      onServiceAddonIdsChange={(value) =>
+                        syncJobServiceSelection({
+                          serviceAddonIds: value,
+                        })
+                      }
+                      onCustomServiceTypeChange={(value) =>
+                        syncJobServiceSelection({
+                          customServiceType: value,
+                        })
+                      }
+                    />
                     <Input label="Appointment Date & Time" type="datetime-local" value={jobForm.scheduledAt} onChange={(value) => setJobForm((current) => ({ ...current, scheduledAt: value }))} />
                     <div className="grid gap-4 sm:grid-cols-3">
                       <Input label="Vehicle Make" value={jobForm.vehicleMake} onChange={(value) => setJobForm((current) => ({ ...current, vehicleMake: value }))} />
@@ -808,7 +1040,7 @@ const Dashboard: React.FC = () => {
                           <div className="text-xs text-gray-500">{job.notes || 'No notes'}</div>
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-600">{vehicleLabel(job)}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{job.service_type}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600">{getJobServiceDisplay(job)}</td>
                         <td className="px-4 py-3 text-sm text-gray-600">{fmtDateTime(job.scheduled_at)}</td>
                         <td className="px-4 py-3">
                           <select
@@ -902,7 +1134,7 @@ const Dashboard: React.FC = () => {
                                 <div key={job.id} className="rounded-2xl border border-neutral-200 px-4 py-3">
                                   <div className="flex items-center justify-between gap-3">
                                     <div>
-                                      <div className="font-semibold text-brand-black">{job.service_type}</div>
+                                      <div className="font-semibold text-brand-black">{getJobServiceDisplay(job)}</div>
                                       <div className="text-sm text-gray-600">{fmtDateTime(job.scheduled_at)}</div>
                                     </div>
                                     <StatusBadge status={job.ui_status || 'scheduled'} label={jobStatusLabel[job.ui_status || 'scheduled']} />
@@ -945,7 +1177,7 @@ const Dashboard: React.FC = () => {
                   rows={jobs.map((job) => (
                     <tr key={job.id} className="border-t border-neutral-100">
                       <td className="px-4 py-3 font-semibold text-brand-black">{job.client_name}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{job.service_type}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{getJobServiceDisplay(job)}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">{fmtDateTime(job.scheduled_at)}</td>
                       <td className="px-4 py-3 text-sm font-semibold text-brand-black">{currency(job.estimated_amount)}</td>
                       <td className="px-4 py-3">
@@ -1138,6 +1370,117 @@ const Select: React.FC<{
   </label>
 );
 
+const ServiceCatalogField: React.FC<{
+  label: string;
+  serviceCatalogId: string;
+  serviceAddonIds: string[];
+  customServiceType: string;
+  groupedPrimaryOfferings: Array<{ label: string; offerings: ServiceOffering[] }>;
+  addOnOfferings: ServiceOffering[];
+  onServiceCatalogIdChange: (value: string) => void;
+  onServiceAddonIdsChange: (value: string[]) => void;
+  onCustomServiceTypeChange: (value: string) => void;
+}> = ({
+  label,
+  serviceCatalogId,
+  serviceAddonIds,
+  customServiceType,
+  groupedPrimaryOfferings,
+  addOnOfferings,
+  onServiceCatalogIdChange,
+  onServiceAddonIdsChange,
+  onCustomServiceTypeChange,
+}) => {
+  const allowAddOns = Boolean(serviceCatalogId) && serviceCatalogId !== 'custom';
+
+  const toggleAddOn = (offeringId: string) => {
+    if (!allowAddOns) return;
+    onServiceAddonIdsChange(
+      serviceAddonIds.includes(offeringId)
+        ? serviceAddonIds.filter((id) => id !== offeringId)
+        : [...serviceAddonIds, offeringId]
+    );
+  };
+
+  return (
+    <div className="space-y-4">
+      <label className="block">
+        <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">{label}</span>
+        <select
+          required
+          value={serviceCatalogId}
+          onChange={(event) => onServiceCatalogIdChange(event.target.value)}
+          className="w-full rounded-2xl border border-neutral-200 px-4 py-3 text-sm text-brand-black outline-none transition focus:border-brand-mclaren"
+        >
+          <option value="">Select a service</option>
+          {groupedPrimaryOfferings.map((group) => (
+            <optgroup key={group.label} label={group.label}>
+              {group.offerings.map((offering) => (
+                <option key={offering.id} value={offering.id}>
+                  {offering.title} | {offering.priceLabel}
+                </option>
+              ))}
+            </optgroup>
+          ))}
+          <option value="custom">Custom service</option>
+        </select>
+      </label>
+
+      {serviceCatalogId === 'custom' && (
+        <Input
+          label="Custom Service Name"
+          value={customServiceType}
+          onChange={onCustomServiceTypeChange}
+          placeholder="Enter manual service name"
+          required
+        />
+      )}
+
+      {addOnOfferings.length > 0 && (
+        <div className="rounded-2xl border border-neutral-200 bg-neutral-50 p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">Optional Add-Ons</div>
+              <p className="mt-2 text-sm text-gray-600">
+                Add-ons can be attached to a catalog service. Custom services stay manual-only.
+              </p>
+            </div>
+            {!allowAddOns && (
+              <span className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-500">
+                Select a catalog service first
+              </span>
+            )}
+          </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            {addOnOfferings.map((offering) => (
+              <label
+                key={offering.id}
+                className={`flex items-start gap-3 rounded-xl border px-4 py-3 ${
+                  serviceAddonIds.includes(offering.id)
+                    ? 'border-brand-mclaren bg-brand-mclaren/5'
+                    : 'border-neutral-200 bg-white'
+                } ${!allowAddOns ? 'cursor-not-allowed opacity-60' : ''}`}
+              >
+                <input
+                  type="checkbox"
+                  className="mt-1 h-4 w-4 rounded border-neutral-300 text-brand-mclaren focus:ring-brand-mclaren"
+                  checked={serviceAddonIds.includes(offering.id)}
+                  disabled={!allowAddOns}
+                  onChange={() => toggleAddOn(offering.id)}
+                />
+                <div className="min-w-0">
+                  <div className="font-semibold text-brand-black">{offering.title}</div>
+                  <div className="mt-1 text-sm text-gray-600">{offering.priceLabel}</div>
+                </div>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const TextArea: React.FC<{
   label?: string;
   value: string;
@@ -1171,3 +1514,4 @@ const EmptyState: React.FC<{ message: string }> = ({ message }) => (
 );
 
 export default Dashboard;
+

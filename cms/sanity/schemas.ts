@@ -146,6 +146,36 @@ export const homePage = {
   ],
 };
 
+const serviceOfferingFields = [
+  { name: 'id', type: 'string', title: 'Stable ID' },
+  { name: 'title', type: 'string', title: 'Title' },
+  { name: 'shortTitle', type: 'string', title: 'Short Title' },
+  { name: 'description', type: 'text', title: 'Description' },
+  {
+    name: 'category',
+    type: 'string',
+    title: 'Category',
+    options: {
+      list: [
+        { title: 'Detailing', value: 'detailing' },
+        { title: 'Maintenance', value: 'maintenance' },
+        { title: 'Protection', value: 'protection' },
+        { title: 'Window Tinting', value: 'tint' },
+        { title: 'Restoration', value: 'restoration' },
+        { title: 'Add-On', value: 'add_on' },
+      ],
+    },
+  },
+  { name: 'priceLabel', type: 'string', title: 'Price Label' },
+  { name: 'fixedPriceAmount', type: 'number', title: 'Fixed Price Amount' },
+  { name: 'duration', type: 'string', title: 'Duration' },
+  { name: 'image', type: 'string', title: 'Image URL or /client-images path' },
+  { name: 'features', type: 'array', of: [{ type: 'string' }], title: 'Features' },
+  { name: 'notes', type: 'text', title: 'Notes' },
+  { name: 'bookable', type: 'boolean', title: 'Bookable' },
+  { name: 'addOnOnly', type: 'boolean', title: 'Add-On Only' },
+];
+
 export const servicesPage = {
   name: 'servicesPage',
   type: 'document',
@@ -154,27 +184,61 @@ export const servicesPage = {
     { name: 'badge', type: 'string' },
     { name: 'title', type: 'string' },
     { name: 'subtitle', type: 'text' },
+    { name: 'detailingPackagesTitle', type: 'string', title: 'Detailing Packages Title' },
     {
-      name: 'services',
+      name: 'detailingOfferings',
       type: 'array',
+      title: 'Detailing Offerings',
+      of: [{ type: 'object', fields: serviceOfferingFields }],
+    },
+    {
+      name: 'detailingPackages',
+      type: 'array',
+      title: 'Detailing Price Matrix',
       of: [
         {
           type: 'object',
           fields: [
-            { name: 'id', type: 'string' },
-            { name: 'title', type: 'string' },
-            { name: 'description', type: 'text' },
-            { name: 'category', type: 'string' },
-            { name: 'price', type: 'string' },
-            { name: 'duration', type: 'string' },
-            { name: 'image', type: 'string', title: 'Image URL or /client-images path' },
-            { name: 'features', type: 'array', of: [{ type: 'string' }] },
-            { name: 'idealFor', type: 'text' },
-            { name: 'process', type: 'text' },
-            { name: 'notes', type: 'text' },
+            { name: 'vehicleType', type: 'string', title: 'Vehicle Type' },
+            { name: 'fullDetailId', type: 'string', title: 'Full Detail Offering ID' },
+            { name: 'interiorOnlyId', type: 'string', title: 'Interior Only Offering ID' },
           ],
         },
       ],
+    },
+    { name: 'exteriorIncludesTitle', type: 'string', title: 'Exterior Includes Title' },
+    {
+      name: 'exteriorIncludes',
+      type: 'array',
+      title: 'Exterior Includes',
+      of: [{ type: 'string' }],
+    },
+    { name: 'interiorIncludesTitle', type: 'string', title: 'Interior Includes Title' },
+    {
+      name: 'interiorIncludes',
+      type: 'array',
+      title: 'Interior Includes',
+      of: [{ type: 'string' }],
+    },
+    { name: 'specialtyServicesTitle', type: 'string', title: 'Specialty Services Title' },
+    {
+      name: 'specialtyServices',
+      type: 'array',
+      title: 'Specialty Services',
+      of: [{ type: 'object', fields: serviceOfferingFields }],
+    },
+    { name: 'additionalServicesTitle', type: 'string', title: 'Additional Services Title' },
+    {
+      name: 'additionalServices',
+      type: 'array',
+      title: 'Additional Services',
+      of: [{ type: 'object', fields: serviceOfferingFields }],
+    },
+    {
+      name: 'featuredOfferingIds',
+      type: 'array',
+      title: 'Featured Offering IDs',
+      of: [{ type: 'string' }],
     },
   ],
 };

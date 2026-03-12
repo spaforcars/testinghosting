@@ -7,20 +7,29 @@ import { apiRequest, ApiError } from '../lib/apiClient';
 import { useCmsPage } from '../hooks/useCmsPage';
 import { defaultServicesPageContent } from '../lib/cmsDefaults';
 import { adaptServicesContent } from '../lib/contentAdapter';
-
-type BookingService = {
-  id: string;
-  name: string;
-  price: string;
-  duration: string;
-};
+import {
+  buildServiceLabel,
+  getAddOnOfferings,
+  getOfferingById,
+  getPrimaryOfferings,
+  groupOfferingsByCategory,
+} from '../lib/serviceCatalog';
 
 const Booking: React.FC = () => {
   const location = useLocation();
   const { data: servicesCmsData } = useCmsPage('services', defaultServicesPageContent);
   const servicesContent = adaptServicesContent(servicesCmsData);
+
+  const primaryOfferings = useMemo(() => getPrimaryOfferings(servicesContent), [servicesContent]);
+  const addOnOfferings = useMemo(() => getAddOnOfferings(servicesContent), [servicesContent]);
+  const groupedPrimaryOfferings = useMemo(
+    () => groupOfferingsByCategory(primaryOfferings),
+    [primaryOfferings]
+  );
+
   const [step, setStep] = useState(1);
-  const [selectedService, setSelectedService] = useState<BookingService | null>(null);
+  const [selectedServiceId, setSelectedServiceId] = useState<string>('');
+  const [selectedAddOnIds, setSelectedAddOnIds] = useState<string[]>([]);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
   const [currentMonth, setCurrentMonth] = useState(new Date());
@@ -35,31 +44,44 @@ const Booking: React.FC = () => {
     notes: '',
   });
 
-  const services: BookingService[] = useMemo(
+  const selectedService = useMemo(
+    () => getOfferingById(servicesContent, selectedServiceId),
+    [selectedServiceId, servicesContent]
+  );
+  const selectedAddOns = useMemo(
     () =>
-      servicesContent.services.map((service, index) => ({
-        id: service.id || `${index + 1}`,
-        name: service.title,
-        price: service.price,
-        duration: service.duration,
-      })),
-    [servicesContent.services]
+      selectedAddOnIds
+        .map((id) => getOfferingById(servicesContent, id))
+        .filter(Boolean),
+    [selectedAddOnIds, servicesContent]
   );
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const serviceId = params.get('service');
-    if (!serviceId) return;
-    const foundService = services.find((service) => service.id === serviceId);
-    if (foundService) setSelectedService(foundService);
-  }, [location.search, services]);
+    const addOnId = params.get('addon');
+
+    if (serviceId && primaryOfferings.some((service) => service.id === serviceId)) {
+      setSelectedServiceId(serviceId);
+    }
+
+    if (addOnId && addOnOfferings.some((service) => service.id === addOnId)) {
+      setSelectedAddOnIds((current) => (current.includes(addOnId) ? current : [...current, addOnId]));
+    }
+  }, [addOnOfferings, location.search, primaryOfferings]);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
-      (entries) => entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); observer.unobserve(e.target); } }),
+      (entries) =>
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('visible');
+            observer.unobserve(entry.target);
+          }
+        }),
       { threshold: 0.1 }
     );
-    document.querySelectorAll('.sr, .stagger').forEach(el => observer.observe(el));
+    document.querySelectorAll('.sr, .stagger').forEach((element) => observer.observe(element));
     return () => observer.disconnect();
   }, []);
 
@@ -115,10 +137,17 @@ const Booking: React.FC = () => {
     return days;
   };
 
+  const toggleAddOn = (addOnId: string) => {
+    setSelectedAddOnIds((current) =>
+      current.includes(addOnId) ? current.filter((id) => id !== addOnId) : [...current, addOnId]
+    );
+  };
+
   const handleConfirm = async () => {
     if (!details.fullName || !details.email || !details.phone || !selectedService || !selectedDate || !selectedTime) {
       return;
     }
+
     setSubmitting(true);
     setSubmitError(null);
 
@@ -130,12 +159,18 @@ const Booking: React.FC = () => {
           email: details.email,
           phone: details.phone,
           message: details.notes || `Booking request for ${details.vehicle || 'vehicle details pending'}`,
-          serviceType: selectedService.name,
+          serviceType: buildServiceLabel(selectedService, selectedAddOns, selectedService.title),
+          serviceCatalogId: selectedService.id,
+          serviceAddonIds: selectedAddOnIds,
           sourcePage: 'booking',
           metadata: {
             selectedDate: selectedDate.toISOString(),
             selectedTime,
             vehicle: details.vehicle,
+            selectedServiceId: selectedService.id,
+            selectedServiceTitle: selectedService.title,
+            selectedAddOnIds,
+            selectedAddOnTitles: selectedAddOns.map((service) => service.title),
           },
         }),
       });
@@ -147,18 +182,22 @@ const Booking: React.FC = () => {
     }
   };
 
+  const serviceSummary = selectedService
+    ? buildServiceLabel(selectedService, selectedAddOns, selectedService.title)
+    : 'Not selected yet';
+
   return (
     <div className="min-h-screen bg-brand-gray">
       <section className="border-b border-black/[0.06] bg-white px-4 py-14 md:py-16">
         <div className="mx-auto max-w-7xl sr">
-          <span className="inline-block rounded-full bg-brand-mclaren/10 border border-brand-mclaren/30 text-brand-mclaren text-[11px] tracking-[0.15em] font-semibold px-4 py-1.5 uppercase">
+          <span className="inline-block rounded-full border border-brand-mclaren/30 bg-brand-mclaren/10 px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.15em] text-brand-mclaren">
             Booking
           </span>
           <h1 className="mt-4 font-display text-4xl font-bold uppercase leading-[0.95] text-brand-black md:text-6xl">
             Reserve Your Appointment
           </h1>
           <p className="mt-4 max-w-3xl text-base leading-relaxed text-gray-600">
-            Select your service, choose an available slot, and submit your details in a few steps.
+            Choose your service, add any optional upgrades when available, then request your preferred date and time.
           </p>
         </div>
       </section>
@@ -172,9 +211,16 @@ const Booking: React.FC = () => {
                 <h3 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.08em] text-gray-500">
                   {step > 1 && <CheckCircle2 className="h-4 w-4 text-brand-mclaren" />} Step 1 - Service
                 </h3>
-                <p className="mt-2 text-sm text-gray-700">
-                  {selectedService ? `${selectedService.name} (${selectedService.duration}, ${selectedService.price})` : 'Not selected yet'}
-                </p>
+                <p className="mt-2 text-sm text-gray-700">{serviceSummary}</p>
+                {selectedAddOns.length > 0 && (
+                  <div className="mt-3 space-y-1">
+                    {selectedAddOns.map((service) => (
+                      <div key={service.id} className="text-xs uppercase tracking-[0.08em] text-gray-500">
+                        Add-on: {service.title}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div className={step >= 2 ? 'opacity-100' : 'opacity-50'}>
@@ -192,8 +238,20 @@ const Booking: React.FC = () => {
               </div>
             </div>
             <div className="mt-8 border-t border-black/[0.06] pt-5">
-              <p className="text-sm text-gray-500">Estimated total</p>
-              <p className="font-display text-3xl font-semibold text-brand-black">{selectedService?.price || '$0'}</p>
+              <p className="text-sm text-gray-500">Published pricing</p>
+              <p className="font-display text-3xl font-semibold text-brand-black">
+                {selectedService?.priceLabel || '$0'}
+              </p>
+              {selectedAddOns.length > 0 && (
+                <div className="mt-4 space-y-2 text-sm text-gray-600">
+                  {selectedAddOns.map((service) => (
+                    <div key={service.id} className="flex items-center justify-between gap-3">
+                      <span>{service.shortTitle || service.title}</span>
+                      <span>{service.priceLabel}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </aside>
 
@@ -215,33 +273,96 @@ const Booking: React.FC = () => {
                     <div className="animate-fade-in">
                       <div className="mb-6 flex items-end justify-between border-b border-black/[0.06] pb-4">
                         <h2 className="font-display text-3xl font-semibold uppercase text-brand-black">Select Service</h2>
-                        <span className="rounded-full bg-brand-mclaren/10 border border-brand-mclaren/30 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.15em] text-brand-mclaren">Step 1 of 3</span>
+                        <span className="rounded-full border border-brand-mclaren/30 bg-brand-mclaren/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.15em] text-brand-mclaren">
+                          Step 1 of 3
+                        </span>
                       </div>
 
-                      <div className="space-y-3">
-                        {services.map((service) => {
-                          const isSelected = selectedService?.id === service.id;
-                          return (
-                            <button
-                              key={service.id}
-                              type="button"
-                              onClick={() => setSelectedService(service)}
-                              className={`w-full rounded-xl border px-5 py-4 text-left transition-colors ${
-                                isSelected
-                                  ? 'border-brand-mclaren bg-brand-mclaren/5'
-                                  : 'border-black/[0.06] bg-white hover:border-brand-mclaren/50'
-                              }`}
-                            >
-                              <div className="flex flex-wrap items-center justify-between gap-3">
-                                <div>
-                                  <p className="font-display text-xl font-semibold uppercase text-brand-black">{service.name}</p>
-                                  <p className="mt-1 text-sm text-gray-600">Duration: {service.duration}</p>
-                                </div>
-                                <p className="text-lg font-semibold text-brand-black">{service.price}</p>
+                      <div className="space-y-6">
+                        {groupedPrimaryOfferings.map((group) => (
+                          <div key={group.category}>
+                            <div className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">
+                              {group.label}
+                            </div>
+                            <div className="space-y-3">
+                              {group.offerings.map((service) => {
+                                const isSelected = selectedService?.id === service.id;
+                                return (
+                                  <button
+                                    key={service.id}
+                                    type="button"
+                                    onClick={() => setSelectedServiceId(service.id)}
+                                    className={`w-full rounded-xl border px-5 py-4 text-left transition-colors ${
+                                      isSelected
+                                        ? 'border-brand-mclaren bg-brand-mclaren/5'
+                                        : 'border-black/[0.06] bg-white hover:border-brand-mclaren/50'
+                                    }`}
+                                  >
+                                    <div className="flex flex-wrap items-center justify-between gap-3">
+                                      <div>
+                                        <p className="font-display text-xl font-semibold uppercase text-brand-black">
+                                          {service.title}
+                                        </p>
+                                        <p className="mt-1 text-sm text-gray-600">
+                                          {service.duration || 'Duration varies'}
+                                        </p>
+                                      </div>
+                                      <p className="text-lg font-semibold text-brand-black">{service.priceLabel}</p>
+                                    </div>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
+
+                        {addOnOfferings.length > 0 && (
+                          <div className="rounded-2xl border border-black/[0.06] bg-brand-gray/60 p-5">
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                              <div>
+                                <h3 className="font-display text-xl font-semibold uppercase text-brand-black">
+                                  Optional Add-Ons
+                                </h3>
+                                <p className="mt-2 text-sm leading-6 text-gray-600">
+                                  Optional upgrades can be attached to the selected service.
+                                </p>
                               </div>
-                            </button>
-                          );
-                        })}
+                              {!selectedService && (
+                                <span className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-500">
+                                  Choose a service first
+                                </span>
+                              )}
+                            </div>
+                            <div className="mt-5 grid gap-3 md:grid-cols-2">
+                              {addOnOfferings.map((service) => {
+                                const checked = selectedAddOnIds.includes(service.id);
+                                return (
+                                  <label
+                                    key={service.id}
+                                    className={`flex cursor-pointer items-start gap-3 rounded-xl border px-4 py-4 transition ${
+                                      checked
+                                        ? 'border-brand-mclaren bg-brand-mclaren/5'
+                                        : 'border-black/[0.06] bg-white'
+                                    } ${!selectedService ? 'cursor-not-allowed opacity-60' : ''}`}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      className="mt-1 h-4 w-4 rounded border-neutral-300 text-brand-mclaren focus:ring-brand-mclaren"
+                                      checked={checked}
+                                      disabled={!selectedService}
+                                      onChange={() => toggleAddOn(service.id)}
+                                    />
+                                    <div className="min-w-0">
+                                      <div className="font-semibold text-brand-black">{service.title}</div>
+                                      <div className="mt-1 text-sm text-gray-600">{service.priceLabel}</div>
+                                      <div className="mt-1 text-xs leading-5 text-gray-500">{service.description}</div>
+                                    </div>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
                       </div>
 
                       <div className="mt-8 flex justify-end">
@@ -256,7 +377,9 @@ const Booking: React.FC = () => {
                     <div className="animate-fade-in">
                       <div className="mb-6 flex items-end justify-between border-b border-black/[0.06] pb-4">
                         <h2 className="font-display text-3xl font-semibold uppercase text-brand-black">Select Date & Time</h2>
-                        <span className="rounded-full bg-brand-mclaren/10 border border-brand-mclaren/30 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.15em] text-brand-mclaren">Step 2 of 3</span>
+                        <span className="rounded-full border border-brand-mclaren/30 bg-brand-mclaren/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.15em] text-brand-mclaren">
+                          Step 2 of 3
+                        </span>
                       </div>
 
                       <div className="grid gap-6 lg:grid-cols-[1fr_210px]">
@@ -301,7 +424,7 @@ const Booking: React.FC = () => {
                                   onClick={() => setSelectedTime(slot)}
                                   className={`w-full rounded-lg border px-3 py-2 text-sm transition-colors ${
                                     selectedTime === slot
-                                      ? 'border-brand-mclaren bg-brand-mclaren/5 text-brand-mclaren font-semibold'
+                                      ? 'border-brand-mclaren bg-brand-mclaren/5 font-semibold text-brand-mclaren'
                                       : 'border-black/[0.06] bg-white text-brand-black hover:border-brand-mclaren hover:text-brand-mclaren'
                                   }`}
                                 >
@@ -336,7 +459,9 @@ const Booking: React.FC = () => {
                     <div className="animate-fade-in">
                       <div className="mb-6 flex items-end justify-between border-b border-black/[0.06] pb-4">
                         <h2 className="font-display text-3xl font-semibold uppercase text-brand-black">Your Details</h2>
-                        <span className="rounded-full bg-brand-mclaren/10 border border-brand-mclaren/30 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.15em] text-brand-mclaren">Step 3 of 3</span>
+                        <span className="rounded-full border border-brand-mclaren/30 bg-brand-mclaren/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.15em] text-brand-mclaren">
+                          Step 3 of 3
+                        </span>
                       </div>
 
                       <div className="grid gap-5 md:grid-cols-2">
@@ -345,8 +470,8 @@ const Booking: React.FC = () => {
                           <input
                             type="text"
                             value={details.fullName}
-                            onChange={(e) => setDetails((prev) => ({ ...prev, fullName: e.target.value }))}
-                            className="w-full rounded-lg border border-black/[0.06] bg-white px-4 py-3 text-sm text-brand-black focus:border-brand-mclaren focus:ring-2 focus:ring-brand-mclaren/20 focus:outline-none transition-shadow"
+                            onChange={(event) => setDetails((prev) => ({ ...prev, fullName: event.target.value }))}
+                            className="w-full rounded-lg border border-black/[0.06] bg-white px-4 py-3 text-sm text-brand-black outline-none transition-shadow focus:border-brand-mclaren focus:ring-2 focus:ring-brand-mclaren/20"
                             placeholder="John Doe"
                           />
                         </div>
@@ -355,8 +480,8 @@ const Booking: React.FC = () => {
                           <input
                             type="email"
                             value={details.email}
-                            onChange={(e) => setDetails((prev) => ({ ...prev, email: e.target.value }))}
-                            className="w-full rounded-lg border border-black/[0.06] bg-white px-4 py-3 text-sm text-brand-black focus:border-brand-mclaren focus:ring-2 focus:ring-brand-mclaren/20 focus:outline-none transition-shadow"
+                            onChange={(event) => setDetails((prev) => ({ ...prev, email: event.target.value }))}
+                            className="w-full rounded-lg border border-black/[0.06] bg-white px-4 py-3 text-sm text-brand-black outline-none transition-shadow focus:border-brand-mclaren focus:ring-2 focus:ring-brand-mclaren/20"
                             placeholder="you@example.com"
                           />
                         </div>
@@ -365,8 +490,8 @@ const Booking: React.FC = () => {
                           <input
                             type="tel"
                             value={details.phone}
-                            onChange={(e) => setDetails((prev) => ({ ...prev, phone: e.target.value }))}
-                            className="w-full rounded-lg border border-black/[0.06] bg-white px-4 py-3 text-sm text-brand-black focus:border-brand-mclaren focus:ring-2 focus:ring-brand-mclaren/20 focus:outline-none transition-shadow"
+                            onChange={(event) => setDetails((prev) => ({ ...prev, phone: event.target.value }))}
+                            className="w-full rounded-lg border border-black/[0.06] bg-white px-4 py-3 text-sm text-brand-black outline-none transition-shadow focus:border-brand-mclaren focus:ring-2 focus:ring-brand-mclaren/20"
                             placeholder="+1 (555) 000-0000"
                           />
                         </div>
@@ -375,8 +500,8 @@ const Booking: React.FC = () => {
                           <input
                             type="text"
                             value={details.vehicle}
-                            onChange={(e) => setDetails((prev) => ({ ...prev, vehicle: e.target.value }))}
-                            className="w-full rounded-lg border border-black/[0.06] bg-white px-4 py-3 text-sm text-brand-black focus:border-brand-mclaren focus:ring-2 focus:ring-brand-mclaren/20 focus:outline-none transition-shadow"
+                            onChange={(event) => setDetails((prev) => ({ ...prev, vehicle: event.target.value }))}
+                            className="w-full rounded-lg border border-black/[0.06] bg-white px-4 py-3 text-sm text-brand-black outline-none transition-shadow focus:border-brand-mclaren focus:ring-2 focus:ring-brand-mclaren/20"
                             placeholder="Year, Make, Model"
                           />
                         </div>
@@ -386,8 +511,8 @@ const Booking: React.FC = () => {
                         <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.08em] text-gray-500">Special Requests</label>
                         <textarea
                           value={details.notes}
-                          onChange={(e) => setDetails((prev) => ({ ...prev, notes: e.target.value }))}
-                          className="h-28 w-full rounded-lg border border-black/[0.06] bg-white px-4 py-3 text-sm text-brand-black focus:border-brand-mclaren focus:ring-2 focus:ring-brand-mclaren/20 focus:outline-none transition-shadow"
+                          onChange={(event) => setDetails((prev) => ({ ...prev, notes: event.target.value }))}
+                          className="h-28 w-full rounded-lg border border-black/[0.06] bg-white px-4 py-3 text-sm text-brand-black outline-none transition-shadow focus:border-brand-mclaren focus:ring-2 focus:ring-brand-mclaren/20"
                           placeholder="Any concerns or goals for this appointment?"
                         />
                       </div>

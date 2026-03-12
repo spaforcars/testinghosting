@@ -5,6 +5,7 @@ import { badRequest, forbidden, methodNotAllowed, serverError, unauthorized } fr
 import { writeAuditLog } from '../../_lib/audit';
 import { createInAppNotification } from '../../_lib/inAppNotifications';
 import { isFeatureEnabled } from '../../_lib/featureFlags';
+import { normalizeServiceAddonIds, normalizeServiceCatalogId } from '../../_lib/serviceSelection';
 
 interface ConvertLeadBody {
   clientId?: string;
@@ -20,6 +21,8 @@ interface ConvertLeadBody {
   };
   serviceJob?: {
     serviceType?: string;
+    serviceCatalogId?: string | null;
+    serviceAddonIds?: string[] | null;
     status?: string;
     scheduledAt?: string | null;
     assigneeId?: string | null;
@@ -67,6 +70,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const vehicleMake = body.serviceJob?.vehicleMake ?? lead.vehicle_make;
     const vehicleModel = body.serviceJob?.vehicleModel ?? lead.vehicle_model;
     const vehicleYear = body.serviceJob?.vehicleYear ?? lead.vehicle_year;
+    const serviceCatalogId = normalizeServiceCatalogId(
+      body.serviceJob?.serviceCatalogId ?? lead.service_catalog_id
+    );
+    const serviceAddonIds = normalizeServiceAddonIds(
+      body.serviceJob?.serviceAddonIds ?? lead.service_addon_ids
+    );
+    const serviceType = body.serviceJob?.serviceType || lead.service_type || 'General Service';
 
     if (!clientId && createClient) {
       const clientInsert = {
@@ -106,7 +116,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         lead_id: lead.id,
         client_id: clientId,
         client_name: clientRecord?.name || lead.name,
-        service_type: body.serviceJob?.serviceType || lead.service_type || 'General Service',
+        service_type: serviceType,
+        service_catalog_id: serviceCatalogId,
+        service_addon_ids: serviceAddonIds.length ? serviceAddonIds : null,
         status: body.serviceJob?.status || 'booked',
         scheduled_at: body.serviceJob?.scheduledAt || null,
         assignee_id:
@@ -148,6 +160,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const leadUpdate: Record<string, unknown> = {
       status: createServiceJob ? 'booked' : 'contacted',
+      service_type: serviceType,
+      service_catalog_id: serviceCatalogId,
+      service_addon_ids: serviceAddonIds.length ? serviceAddonIds : null,
     };
 
     if (serviceJobRecord && serviceJobRecord.client_id) {

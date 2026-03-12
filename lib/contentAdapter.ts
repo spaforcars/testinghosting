@@ -10,6 +10,7 @@ import type {
   NavigationContent,
   NavigationItem,
   PricingPageContent,
+  ServiceOffering,
   SiteSettingsContent,
   ServicesPageContent,
 } from '../types/cms';
@@ -37,10 +38,55 @@ const ensureStringArray = (value: unknown, fallback: string[]): string[] =>
 const ensureNumber = (value: unknown, fallback: number): number =>
   typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 
+const ensureBoolean = (value: unknown, fallback: boolean): boolean =>
+  typeof value === 'boolean' ? value : fallback;
+
 const ensureNumberArray = (value: unknown, fallback: number[]): number[] =>
   Array.isArray(value) && value.every((item) => typeof item === 'number' && Number.isFinite(item))
     ? (value as number[])
     : fallback;
+
+const isServiceCategory = (value: string): value is ServiceOffering['category'] =>
+  value === 'detailing' ||
+  value === 'maintenance' ||
+  value === 'protection' ||
+  value === 'tint' ||
+  value === 'restoration' ||
+  value === 'add_on';
+
+const adaptServiceOffering = (value: unknown): ServiceOffering | null => {
+  if (!value || typeof value !== 'object') return null;
+  const record = value as Record<string, unknown>;
+  const id = ensureString(record.id, '');
+  const title = ensureString(record.title, '');
+  const description = ensureString(record.description, '');
+  const categoryCandidate = ensureString(record.category, '');
+  const priceLabel = ensureString(record.priceLabel, '');
+  const image = ensureString(record.image, '');
+
+  if (!id || !title || !description || !priceLabel || !image || !isServiceCategory(categoryCandidate)) {
+    return null;
+  }
+
+  return {
+    id,
+    title,
+    shortTitle: ensureString(record.shortTitle, '') || undefined,
+    description,
+    category: categoryCandidate,
+    priceLabel,
+    fixedPriceAmount:
+      typeof record.fixedPriceAmount === 'number' && Number.isFinite(record.fixedPriceAmount)
+        ? record.fixedPriceAmount
+        : undefined,
+    duration: ensureString(record.duration, '') || undefined,
+    image,
+    features: ensureStringArray(record.features, []),
+    notes: ensureString(record.notes, '') || undefined,
+    bookable: ensureBoolean(record.bookable, false),
+    addOnOnly: ensureBoolean(record.addOnOnly, false),
+  };
+};
 
 export const adaptHomeContent = (raw: unknown): HomePageContent => {
   if (!raw || typeof raw !== 'object') return defaultHomePageContent;
@@ -139,12 +185,81 @@ export const adaptHomeContent = (raw: unknown): HomePageContent => {
 export const adaptServicesContent = (raw: unknown): ServicesPageContent => {
   if (!raw || typeof raw !== 'object') return defaultServicesPageContent;
   const page = raw as Partial<ServicesPageContent>;
-  const incomingServices = Array.isArray(page.services) ? page.services : [];
+
+  const detailingOfferings = Array.isArray(page.detailingOfferings)
+    ? page.detailingOfferings.map(adaptServiceOffering).filter(Boolean)
+    : [];
+
+  const detailingPackages = Array.isArray(page.detailingPackages)
+    ? page.detailingPackages
+        .map((row) => {
+          if (!row || typeof row !== 'object') return null;
+          const record = row as unknown as Record<string, unknown>;
+          const vehicleType = ensureString(record.vehicleType, '');
+          const fullDetailId = ensureString(record.fullDetailId, '');
+          const interiorOnlyId = ensureString(record.interiorOnlyId, '');
+          if (!vehicleType || !fullDetailId || !interiorOnlyId) return null;
+          return { vehicleType, fullDetailId, interiorOnlyId };
+        })
+        .filter(Boolean)
+    : [];
+
+  const specialtyServices = Array.isArray(page.specialtyServices)
+    ? page.specialtyServices.map(adaptServiceOffering).filter(Boolean)
+    : [];
+
+  const additionalServices = Array.isArray(page.additionalServices)
+    ? page.additionalServices.map(adaptServiceOffering).filter(Boolean)
+    : [];
+
   return {
     badge: ensureString(page.badge, defaultServicesPageContent.badge),
     title: ensureString(page.title, defaultServicesPageContent.title),
     subtitle: ensureString(page.subtitle, defaultServicesPageContent.subtitle),
-    services: incomingServices.length ? incomingServices : defaultServicesPageContent.services,
+    detailingPackagesTitle: ensureString(
+      page.detailingPackagesTitle,
+      defaultServicesPageContent.detailingPackagesTitle
+    ),
+    detailingOfferings: detailingOfferings.length
+      ? (detailingOfferings as ServiceOffering[])
+      : defaultServicesPageContent.detailingOfferings,
+    detailingPackages: detailingPackages.length
+      ? (detailingPackages as ServicesPageContent['detailingPackages'])
+      : defaultServicesPageContent.detailingPackages,
+    exteriorIncludesTitle: ensureString(
+      page.exteriorIncludesTitle,
+      defaultServicesPageContent.exteriorIncludesTitle
+    ),
+    exteriorIncludes: ensureStringArray(
+      page.exteriorIncludes,
+      defaultServicesPageContent.exteriorIncludes
+    ),
+    interiorIncludesTitle: ensureString(
+      page.interiorIncludesTitle,
+      defaultServicesPageContent.interiorIncludesTitle
+    ),
+    interiorIncludes: ensureStringArray(
+      page.interiorIncludes,
+      defaultServicesPageContent.interiorIncludes
+    ),
+    specialtyServicesTitle: ensureString(
+      page.specialtyServicesTitle,
+      defaultServicesPageContent.specialtyServicesTitle
+    ),
+    specialtyServices: specialtyServices.length
+      ? (specialtyServices as ServiceOffering[])
+      : defaultServicesPageContent.specialtyServices,
+    additionalServicesTitle: ensureString(
+      page.additionalServicesTitle,
+      defaultServicesPageContent.additionalServicesTitle
+    ),
+    additionalServices: additionalServices.length
+      ? (additionalServices as ServiceOffering[])
+      : defaultServicesPageContent.additionalServices,
+    featuredOfferingIds: ensureStringArray(
+      page.featuredOfferingIds,
+      defaultServicesPageContent.featuredOfferingIds
+    ),
   };
 };
 

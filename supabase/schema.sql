@@ -25,6 +25,8 @@ create table if not exists public.enquiries (
   phone text,
   message text not null,
   service_type text,
+  service_catalog_id text,
+  service_addon_ids text[],
   source_page text not null,
   metadata jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now()
@@ -37,6 +39,8 @@ create table if not exists public.leads (
   email text not null,
   phone text,
   service_type text,
+  service_catalog_id text,
+  service_addon_ids text[],
   source_page text not null,
   status text not null default 'lead',
   assignee_id uuid references auth.users(id) on delete set null,
@@ -74,6 +78,8 @@ create table if not exists public.service_jobs (
   client_id uuid references public.clients(id) on delete set null,
   client_name text not null,
   service_type text not null,
+  service_catalog_id text,
+  service_addon_ids text[],
   status text not null default 'booked',
   scheduled_at timestamptz,
   assignee_id uuid references auth.users(id) on delete set null,
@@ -101,8 +107,14 @@ alter table if exists public.clients add column if not exists tags text[] not nu
 alter table if exists public.clients add column if not exists assignee_id uuid references auth.users(id) on delete set null;
 alter table if exists public.clients add column if not exists archived boolean not null default false;
 
+alter table if exists public.enquiries add column if not exists service_catalog_id text;
+alter table if exists public.enquiries add column if not exists service_addon_ids text[];
+alter table if exists public.leads add column if not exists service_catalog_id text;
+alter table if exists public.leads add column if not exists service_addon_ids text[];
 alter table if exists public.service_jobs add column if not exists assignee_id uuid references auth.users(id) on delete set null;
 alter table if exists public.service_jobs add column if not exists notes text;
+alter table if exists public.service_jobs add column if not exists service_catalog_id text;
+alter table if exists public.service_jobs add column if not exists service_addon_ids text[];
 alter table if exists public.leads add column if not exists vehicle_make text;
 alter table if exists public.leads add column if not exists vehicle_model text;
 alter table if exists public.leads add column if not exists vehicle_year int;
