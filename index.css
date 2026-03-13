@@ -154,6 +154,29 @@ button:focus-visible {
   box-shadow: 0 24px 64px -16px rgba(0, 0, 0, 0.15);
 }
 
+.booking-sheen {
+  position: relative;
+  isolation: isolate;
+}
+
+.booking-sheen::after {
+  content: '';
+  position: absolute;
+  inset: -120% auto auto -30%;
+  width: 42%;
+  height: 260%;
+  transform: rotate(18deg);
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0),
+    rgba(255, 255, 255, 0.12),
+    rgba(255, 255, 255, 0)
+  );
+  animation: booking-sheen 8s linear infinite;
+  pointer-events: none;
+  z-index: 2;
+}
+
 /* ── Image zoom on hover ────────────────────────────────────────────── */
 
 .img-zoom {
@@ -226,4 +249,9 @@ button:focus-visible {
 @keyframes fade-in {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes booking-sheen {
+  from { transform: translateX(-25%) rotate(18deg); }
+  to { transform: translateX(320%) rotate(18deg); }
 }
