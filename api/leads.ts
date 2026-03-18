@@ -124,6 +124,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         vehicleMake?: string | null;
         vehicleModel?: string | null;
         vehicleYear?: number | null;
+        bookingMode?: 'instant' | 'request' | null;
+        intakeMetadata?: Record<string, unknown> | null;
       };
 
       if (!body.name || !body.phone || !body.sourcePage) {
@@ -151,6 +153,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           vehicle_make: body.vehicleMake || null,
           vehicle_model: body.vehicleModel || null,
           vehicle_year: typeof body.vehicleYear === 'number' ? body.vehicleYear : null,
+          booking_mode: body.bookingMode || null,
+          intake_metadata: body.intakeMetadata || {},
         })
         .select('*')
         .single();

@@ -111,6 +111,47 @@ export const resolveServiceDisplay = (
   return buildServiceLabel(primaryOffering, addOns, fallback);
 };
 
+export const estimateServiceAmount = (
+  content: ServicesPageContent,
+  primaryOfferingId?: string | null,
+  addOnIds?: string[] | null,
+  fallback?: string | null
+): number | null => {
+  const primaryOffering = getOfferingById(content, primaryOfferingId);
+  if (primaryOffering) {
+    if (typeof primaryOffering.fixedPriceAmount !== 'number') return null;
+    const addOns = (addOnIds || [])
+      .map((id) => getOfferingById(content, id))
+      .filter(Boolean) as ServiceOffering[];
+
+    if (addOns.some((offering) => typeof offering.fixedPriceAmount !== 'number')) {
+      return null;
+    }
+
+    return (
+      primaryOffering.fixedPriceAmount +
+      addOns.reduce((sum, offering) => sum + Number(offering.fixedPriceAmount || 0), 0)
+    );
+  }
+
+  const parts = (fallback || '')
+    .split(' + ')
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  if (!parts.length) return null;
+
+  let resolvedAny = false;
+  const total = parts.reduce((sum, title) => {
+    const offering = findOfferingByTitle(content, title);
+    if (!offering || typeof offering.fixedPriceAmount !== 'number') return sum;
+    resolvedAny = true;
+    return sum + offering.fixedPriceAmount;
+  }, 0);
+
+  return resolvedAny ? total : null;
+};
+
 export const groupOfferingsByCategory = (offerings: ServiceOffering[]) => {
   const groups = new Map<ServiceOfferingCategory, ServiceOffering[]>();
   offerings.forEach((offering) => {

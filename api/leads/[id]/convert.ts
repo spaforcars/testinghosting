@@ -1,9 +1,10 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getAuthContext, hasPermission } from '../../_lib/auth';
 import { getSupabaseAdmin } from '../../_lib/supabaseAdmin';
-import { badRequest, forbidden, methodNotAllowed, serverError, unauthorized } from '../../_lib/http';
+import { badRequest, forbidden, methodNotAllowed, readRouteId, serverError, unauthorized } from '../../_lib/http';
 import { writeAuditLog } from '../../_lib/audit';
 import { createInAppNotification } from '../../_lib/inAppNotifications';
+import { getBookingServiceSelection, getBookingSettings, getScheduledEndAt } from '../../_lib/booking';
 import { isFeatureEnabled } from '../../_lib/featureFlags';
 import { normalizeServiceAddonIds, normalizeServiceCatalogId } from '../../_lib/serviceSelection';
 
@@ -32,6 +33,10 @@ interface ConvertLeadBody {
     vehicleYear?: number | null;
     estimatedAmount?: number | null;
     paymentStatus?: 'unpaid' | 'paid' | null;
+    bookingSource?: string | null;
+    bookingReference?: string | null;
+    pickupRequested?: boolean | null;
+    pickupAddress?: Record<string, unknown> | null;
   };
 }
 
@@ -48,7 +53,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const opsEnabled = await isFeatureEnabled(supabase, 'ops_v1_enabled', true);
     if (!opsEnabled) return forbidden(res);
 
-    const leadId = String(req.query.id || '');
+    const leadId = readRouteId(req, 1);
     if (!leadId) return badRequest(res, 'lead id is required');
 
     const body = (req.body || {}) as ConvertLeadBody;
@@ -77,6 +82,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       body.serviceJob?.serviceAddonIds ?? lead.service_addon_ids
     );
     const serviceType = body.serviceJob?.serviceType || lead.service_type || 'General Service';
+    const leadIntakeMetadata =
+      lead.intake_metadata && typeof lead.intake_metadata === 'object'
+        ? (lead.intake_metadata as Record<string, unknown>)
+        : {};
 
     if (!clientId && createClient) {
       const clientInsert = {
@@ -112,6 +121,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let serviceJobRecord: Record<string, unknown> | null = null;
     if (createServiceJob) {
       if (!hasPermission(auth, 'services', 'write')) return forbidden(res);
+      const bookingSettings = await getBookingSettings(supabase);
+      const selection = serviceCatalogId
+        ? await getBookingServiceSelection(serviceCatalogId, serviceAddonIds)
+        : null;
       const jobPayload = {
         lead_id: lead.id,
         client_id: clientId,
@@ -121,6 +134,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         service_addon_ids: serviceAddonIds.length ? serviceAddonIds : null,
         status: body.serviceJob?.status || 'booked',
         scheduled_at: body.serviceJob?.scheduledAt || null,
+        scheduled_end_at: getScheduledEndAt(
+          body.serviceJob?.scheduledAt || null,
+          selection?.primaryService || null,
+          selection?.addOns || [],
+          bookingSettings
+        ),
         assignee_id:
           typeof body.serviceJob?.assigneeId !== 'undefined'
             ? body.serviceJob.assigneeId
@@ -132,7 +151,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         estimated_amount:
           typeof body.serviceJob?.estimatedAmount === 'number' ? body.serviceJob.estimatedAmount : 0,
         payment_status: body.serviceJob?.paymentStatus || 'unpaid',
+        booking_source:
+          body.serviceJob?.bookingSource ||
+          (lead.booking_mode === 'instant' || lead.booking_mode === 'request' ? 'public' : 'ops'),
+        booking_reference:
+          body.serviceJob?.bookingReference || String(leadIntakeMetadata.bookingReference || '') || null,
+        pickup_requested: Boolean(body.serviceJob?.pickupRequested || leadIntakeMetadata.pickupRequested),
+        pickup_address: body.serviceJob?.pickupAddress || leadIntakeMetadata.pickupAddress || null,
         completed_at: body.serviceJob?.status === 'completed' ? new Date().toISOString() : null,
+        updated_at: new Date().toISOString(),
       };
 
       const { data: createdJob, error: jobError } = await supabase
@@ -163,6 +190,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       service_type: serviceType,
       service_catalog_id: serviceCatalogId,
       service_addon_ids: serviceAddonIds.length ? serviceAddonIds : null,
+      updated_at: new Date().toISOString(),
     };
 
     if (serviceJobRecord && serviceJobRecord.client_id) {

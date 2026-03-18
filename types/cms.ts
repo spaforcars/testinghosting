@@ -61,6 +61,9 @@ export type ServiceOfferingCategory =
   | 'restoration'
   | 'add_on';
 
+export type BookingMode = 'instant' | 'request';
+export type BookingIntakeMode = 'basic' | 'assessment';
+
 export interface ServiceOffering {
   id: string;
   title: string;
@@ -75,6 +78,11 @@ export interface ServiceOffering {
   notes?: string;
   bookable: boolean;
   addOnOnly: boolean;
+  bookingMode: BookingMode;
+  slotDurationMinutes?: number;
+  bufferMinutes?: number;
+  allowsPickupRequest: boolean;
+  intakeMode: BookingIntakeMode;
 }
 
 export interface DetailingPackageRow {

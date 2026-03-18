@@ -53,16 +53,17 @@ const rolePermissionsFallback: Record<string, string[]> = {
 };
 
 const resolveRolePermissions = async (supabase: SupabaseClient, role: string): Promise<Set<string>> => {
+  const fallbackPermissions = new Set(rolePermissionsFallback[role] || []);
   const { data, error } = await supabase
     .from('role_permissions')
     .select('module, action')
     .eq('role', role);
 
   if (error || !data?.length) {
-    return new Set(rolePermissionsFallback[role] || []);
+    return fallbackPermissions;
   }
 
-  const permissions = new Set<string>();
+  const permissions = new Set<string>(fallbackPermissions);
   for (const row of data) {
     permissions.add(`${row.module}.${row.action}`);
   }

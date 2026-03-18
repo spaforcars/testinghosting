@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getAuthContext, hasPermission } from '../../_lib/auth';
 import { getSupabaseAdmin } from '../../_lib/supabaseAdmin';
-import { badRequest, forbidden, methodNotAllowed, serverError, unauthorized } from '../../_lib/http';
+import { badRequest, forbidden, methodNotAllowed, readRouteId, serverError, unauthorized } from '../../_lib/http';
 import { writeAuditLog } from '../../_lib/audit';
 import { isFeatureEnabled } from '../../_lib/featureFlags';
 
@@ -14,7 +14,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const opsEnabled = await isFeatureEnabled(supabase, 'ops_v1_enabled', true);
     if (!opsEnabled) return forbidden(res);
 
-    const clientId = String(req.query.id || '');
+    const clientId = readRouteId(req, 1);
     if (!clientId) return badRequest(res, 'client id is required');
 
     if (req.method === 'GET') {

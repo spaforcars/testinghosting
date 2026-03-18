@@ -4,6 +4,7 @@ import Layout from './components/Layout';
 import Home from './pages/Home';
 import Services from './pages/Services';
 import Booking from './pages/Booking';
+import BookingManage from './pages/BookingManage';
 import GiftCards from './pages/GiftCards';
 import Fleet from './pages/Fleet';
 import Gallery from './pages/Gallery';
@@ -24,6 +25,7 @@ const App: React.FC = () => {
           <Route path="/services" element={<Services />} />
           <Route path="/pricing" element={<Pricing />} />
           <Route path="/booking" element={<Booking />} />
+          <Route path="/booking/manage/:reference" element={<BookingManage />} />
           <Route path="/gift-cards" element={<GiftCards />} />
           <Route path="/fleet" element={<Fleet />} />
           <Route path="/gallery" element={<Gallery />} />

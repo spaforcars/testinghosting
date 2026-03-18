@@ -1,6 +1,8 @@
 import type {
   AboutPageContent,
   AutoRepairPageContent,
+  BookingIntakeMode,
+  BookingMode,
   ContactPageContent,
   FaqPageContent,
   FleetPageContent,
@@ -12,6 +14,22 @@ import type {
   SiteSettingsContent,
   ServicesPageContent,
 } from '../types/cms';
+
+const bookingProfile = (
+  bookingMode: BookingMode,
+  slotDurationMinutes: number | undefined,
+  options: {
+    bufferMinutes?: number;
+    allowsPickupRequest?: boolean;
+    intakeMode?: BookingIntakeMode;
+  } = {}
+) => ({
+  bookingMode,
+  slotDurationMinutes,
+  bufferMinutes: options.bufferMinutes ?? 30,
+  allowsPickupRequest: options.allowsPickupRequest ?? false,
+  intakeMode: options.intakeMode ?? 'basic',
+});
 
 export const defaultHomePageContent: HomePageContent = {
   heroTitle: "Ontario's Top",
@@ -91,6 +109,7 @@ export const defaultServicesPageContent: ServicesPageContent = {
       notes: 'Includes the full exterior and interior detailing inclusions listed below.',
       bookable: true,
       addOnOnly: false,
+      ...bookingProfile('instant', 300, { allowsPickupRequest: true }),
     },
     {
       id: 'interior-only-standard-cars',
@@ -107,6 +126,7 @@ export const defaultServicesPageContent: ServicesPageContent = {
       notes: 'Focused on interior surfaces, upholstery, carpets, vents, and windows.',
       bookable: true,
       addOnOnly: false,
+      ...bookingProfile('instant', 240, { allowsPickupRequest: true }),
     },
     {
       id: 'full-detail-standard-suv',
@@ -122,6 +142,7 @@ export const defaultServicesPageContent: ServicesPageContent = {
       notes: 'Includes the full exterior and interior detailing inclusions listed below.',
       bookable: true,
       addOnOnly: false,
+      ...bookingProfile('instant', 360, { allowsPickupRequest: true }),
     },
     {
       id: 'interior-only-standard-suv',
@@ -137,6 +158,7 @@ export const defaultServicesPageContent: ServicesPageContent = {
       notes: 'Focused on interior surfaces, upholstery, carpets, vents, and windows.',
       bookable: true,
       addOnOnly: false,
+      ...bookingProfile('instant', 270, { allowsPickupRequest: true }),
     },
     {
       id: 'full-detail-large-suv',
@@ -153,6 +175,7 @@ export const defaultServicesPageContent: ServicesPageContent = {
       notes: 'Includes the full exterior and interior detailing inclusions listed below.',
       bookable: true,
       addOnOnly: false,
+      ...bookingProfile('instant', 390, { allowsPickupRequest: true }),
     },
     {
       id: 'interior-only-large-suv',
@@ -169,6 +192,7 @@ export const defaultServicesPageContent: ServicesPageContent = {
       notes: 'Focused on interior surfaces, upholstery, carpets, vents, and windows.',
       bookable: true,
       addOnOnly: false,
+      ...bookingProfile('instant', 300, { allowsPickupRequest: true }),
     },
   ],
   detailingPackages: [
@@ -239,6 +263,7 @@ export const defaultServicesPageContent: ServicesPageContent = {
       notes: 'Pricing varies by vehicle size.',
       bookable: true,
       addOnOnly: false,
+      ...bookingProfile('instant', 150),
     },
     {
       id: 'ceramic-coating',
@@ -260,6 +285,7 @@ export const defaultServicesPageContent: ServicesPageContent = {
       notes: 'Pricing varies by vehicle size and includes a 3-year warranty.',
       bookable: true,
       addOnOnly: false,
+      ...bookingProfile('instant', 480, { allowsPickupRequest: true }),
     },
     {
       id: 'window-tint-complete-vehicle',
@@ -282,6 +308,7 @@ export const defaultServicesPageContent: ServicesPageContent = {
       notes: 'Covers a complete vehicle with 4 doors.',
       bookable: true,
       addOnOnly: false,
+      ...bookingProfile('instant', 360),
     },
     {
       id: 'window-tint-two-front',
@@ -304,6 +331,7 @@ export const defaultServicesPageContent: ServicesPageContent = {
       notes: 'Covers the two front windows only.',
       bookable: true,
       addOnOnly: false,
+      ...bookingProfile('instant', 120),
     },
     {
       id: 'paint-restoration',
@@ -323,6 +351,10 @@ export const defaultServicesPageContent: ServicesPageContent = {
       notes: 'Final scope depends on vehicle size and scratch condition.',
       bookable: true,
       addOnOnly: false,
+      ...bookingProfile('request', undefined, {
+        allowsPickupRequest: true,
+        intakeMode: 'assessment',
+      }),
     },
   ],
   additionalServicesTitle: 'Additional Services',
@@ -341,6 +373,7 @@ export const defaultServicesPageContent: ServicesPageContent = {
       notes: 'Available as a standalone booked service.',
       bookable: true,
       addOnOnly: false,
+      ...bookingProfile('instant', 120),
     },
     {
       id: 'engine-bay-cleaning',
@@ -356,6 +389,7 @@ export const defaultServicesPageContent: ServicesPageContent = {
       notes: 'Available as a standalone booked service.',
       bookable: true,
       addOnOnly: false,
+      ...bookingProfile('instant', 90),
     },
     {
       id: 'pet-hair-removal',
@@ -370,6 +404,7 @@ export const defaultServicesPageContent: ServicesPageContent = {
       notes: 'Pricing depends on severity and is quoted after assessment.',
       bookable: true,
       addOnOnly: false,
+      ...bookingProfile('request', undefined, { intakeMode: 'assessment' }),
     },
     {
       id: 'odor-removal',
@@ -385,6 +420,7 @@ export const defaultServicesPageContent: ServicesPageContent = {
       notes: 'Available as a standalone booked service.',
       bookable: true,
       addOnOnly: false,
+      ...bookingProfile('instant', 420, { allowsPickupRequest: true }),
     },
     {
       id: 'brake-caliper-painting',
@@ -400,6 +436,7 @@ export const defaultServicesPageContent: ServicesPageContent = {
       notes: 'Available as a standalone booked service.',
       bookable: true,
       addOnOnly: false,
+      ...bookingProfile('instant', 480),
     },
   ],
   featuredOfferingIds: [

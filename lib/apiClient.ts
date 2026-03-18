@@ -20,7 +20,16 @@ const buildHeaders = async (headers?: HeadersInit): Promise<Headers> => {
   const supabase = getSupabaseBrowserClient();
   if (supabase) {
     const { data } = await supabase.auth.getSession();
-    const accessToken = data.session?.access_token;
+    let session = data.session;
+    const isExpired =
+      typeof session?.expires_at === 'number' && session.expires_at * 1000 <= Date.now() + 10_000;
+
+    if (!session?.access_token || isExpired) {
+      const refreshResult = await supabase.auth.refreshSession();
+      session = refreshResult.data.session || session;
+    }
+
+    const accessToken = session?.access_token;
     if (accessToken) {
       merged.set('Authorization', `Bearer ${accessToken}`);
     }

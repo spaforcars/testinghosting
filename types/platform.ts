@@ -24,7 +24,12 @@ export interface Enquiry {
   service_addon_ids?: string[] | null;
   source_page: string;
   metadata?: Record<string, unknown> | null;
+  booking_reference?: string | null;
+  booking_mode?: 'instant' | 'request' | null;
+  status?: 'requested' | 'confirmed' | 'cancelled' | null;
+  public_manage_token_expires_at?: string | null;
   created_at: string;
+  updated_at?: string | null;
 }
 
 export interface Lead {
@@ -43,6 +48,9 @@ export interface Lead {
   vehicle_make?: string | null;
   vehicle_model?: string | null;
   vehicle_year?: number | null;
+  booking_mode?: 'instant' | 'request' | null;
+  intake_metadata?: Record<string, unknown> | null;
+  ai_metadata?: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
 }
@@ -101,6 +109,7 @@ export interface ServiceJob {
   status: string;
   ui_status?: JobUiStatus;
   scheduled_at?: string | null;
+  scheduled_end_at?: string | null;
   assignee_id?: string | null;
   notes?: string | null;
   vehicle_make?: string | null;
@@ -108,7 +117,12 @@ export interface ServiceJob {
   vehicle_year?: number | null;
   estimated_amount?: number | null;
   payment_status?: JobPaymentStatus | null;
+  booking_source?: string | null;
+  booking_reference?: string | null;
+  pickup_requested?: boolean | null;
+  pickup_address?: Record<string, unknown> | null;
   completed_at?: string | null;
+  ai_metadata?: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
 }
@@ -178,7 +192,9 @@ export interface NotificationEvent {
   id: string;
   event_type: string;
   entity_id: string;
+  metadata?: Record<string, unknown> | null;
   provider: string;
+  provider_message_id?: string | null;
   status: NotificationStatus;
   attempt_count: number;
   last_error?: string | null;

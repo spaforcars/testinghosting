@@ -174,6 +174,31 @@ const serviceOfferingFields = [
   { name: 'notes', type: 'text', title: 'Notes' },
   { name: 'bookable', type: 'boolean', title: 'Bookable' },
   { name: 'addOnOnly', type: 'boolean', title: 'Add-On Only' },
+  {
+    name: 'bookingMode',
+    type: 'string',
+    title: 'Booking Mode',
+    options: {
+      list: [
+        { title: 'Instant Booking', value: 'instant' },
+        { title: 'Request / Review', value: 'request' },
+      ],
+    },
+  },
+  { name: 'slotDurationMinutes', type: 'number', title: 'Slot Duration (Minutes)' },
+  { name: 'bufferMinutes', type: 'number', title: 'Buffer After Booking (Minutes)' },
+  { name: 'allowsPickupRequest', type: 'boolean', title: 'Allow Pickup Request' },
+  {
+    name: 'intakeMode',
+    type: 'string',
+    title: 'Intake Mode',
+    options: {
+      list: [
+        { title: 'Basic', value: 'basic' },
+        { title: 'Assessment', value: 'assessment' },
+      ],
+    },
+  },
 ];
 
 export const servicesPage = {

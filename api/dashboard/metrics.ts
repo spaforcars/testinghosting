@@ -3,6 +3,29 @@ import { getAuthContext, hasPermission } from '../_lib/auth';
 import { getSupabaseAdmin } from '../_lib/supabaseAdmin';
 import { forbidden, methodNotAllowed, serverError, unauthorized } from '../_lib/http';
 import { isFeatureEnabled } from '../_lib/featureFlags';
+import { getCmsPageData } from '../_lib/cms';
+import { adaptServicesContent } from '../../lib/contentAdapter';
+import { defaultServicesPageContent } from '../../lib/cmsDefaults';
+import { estimateServiceAmount } from '../../lib/serviceCatalog';
+
+const isMissingTableError = (message: string, table: string) =>
+  message.includes(`Could not find the table 'public.${table}'`) ||
+  new RegExp(`relation ["']?public\\.${table}["']? does not exist`, 'i').test(message);
+
+const getJobEstimatedAmount = (
+  row: Record<string, unknown>,
+  servicesContent: ReturnType<typeof adaptServicesContent>
+) =>
+  Number(row.estimated_amount || 0) ||
+  estimateServiceAmount(
+    servicesContent,
+    typeof row.service_catalog_id === 'string' ? row.service_catalog_id : null,
+    Array.isArray(row.service_addon_ids)
+      ? row.service_addon_ids.filter((item): item is string => typeof item === 'string')
+      : null,
+    typeof row.service_type === 'string' ? row.service_type : null
+  ) ||
+  0;
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'GET') return methodNotAllowed(res);
@@ -22,12 +45,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     endOfToday.setDate(endOfToday.getDate() + 1);
 
     const [
+      servicesPage,
       leadsTodayResult,
       clientsTodayResult,
       jobsTodayResult,
+      allJobsResult,
       activeCustomersResult,
       unreadNotificationsResult,
     ] = await Promise.all([
+      getCmsPageData('services'),
       supabase
         .from('leads')
         .select('id', { count: 'exact', head: true })
@@ -40,9 +66,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .lt('created_at', endOfToday.toISOString()),
       supabase
         .from('service_jobs')
-        .select('id, client_id, estimated_amount, status, payment_status')
+        .select('*')
         .gte('scheduled_at', startOfToday.toISOString())
         .lt('scheduled_at', endOfToday.toISOString())
+        .neq('status', 'cancelled'),
+      supabase
+        .from('service_jobs')
+        .select('*')
         .neq('status', 'cancelled'),
       supabase
         .from('service_jobs')
@@ -56,9 +86,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .is('read_at', null),
     ]);
 
-    const expectedRevenueToday = (jobsTodayResult.data || []).reduce((sum, row) => {
-      return sum + Number(row.estimated_amount || 0);
-    }, 0);
+    if (leadsTodayResult.error) throw new Error(leadsTodayResult.error.message);
+    if (clientsTodayResult.error) throw new Error(clientsTodayResult.error.message);
+    if (jobsTodayResult.error) throw new Error(jobsTodayResult.error.message);
+    if (allJobsResult.error) throw new Error(allJobsResult.error.message);
+    if (activeCustomersResult.error) throw new Error(activeCustomersResult.error.message);
+
+    const unreadNotifications =
+      unreadNotificationsResult.error && isMissingTableError(unreadNotificationsResult.error.message, 'in_app_notifications')
+        ? 0
+        : unreadNotificationsResult.error
+          ? (() => {
+              throw new Error(unreadNotificationsResult.error.message);
+            })()
+          : unreadNotificationsResult.count || 0;
+
+    const servicesContent = adaptServicesContent(servicesPage || defaultServicesPageContent);
+
+    const expectedRevenueToday = (jobsTodayResult.data || []).reduce(
+      (sum, row) => sum + getJobEstimatedAmount(row, servicesContent),
+      0
+    );
+
+    const expectedRevenueTotal = (allJobsResult.data || []).reduce(
+      (sum, row) => sum + getJobEstimatedAmount(row, servicesContent),
+      0
+    );
 
     const activeCustomers = new Set(
       (activeCustomersResult.data || []).map((row) => row.client_id).filter(Boolean)
@@ -71,7 +124,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       jobsScheduledToday: jobsTodayResult.data?.length || 0,
       activeCustomers,
       expectedRevenueToday,
-      unreadNotifications: unreadNotificationsResult.count || 0,
+      expectedRevenueTotal,
+      unreadNotifications,
     });
   } catch (error) {
     return serverError(res, error);

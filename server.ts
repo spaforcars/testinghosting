@@ -18,29 +18,34 @@ app.use(express.json());
 
 const apiDirectory = path.resolve(process.cwd(), 'api');
 
-const resolveApiHandlerPath = (requestPath: string): string | null => {
+const resolveApiHandlerMatch = (
+  requestPath: string
+): { handlerPath: string; params: Record<string, string> } | null => {
   const cleanPath = requestPath.replace(/^\/+|\/+$/g, '');
   if (!cleanPath) return null;
 
   const segments = cleanPath.split('/').filter(Boolean);
   if (!segments.length) return null;
-
-  const candidates = new Set<string>();
   const permutations = 1 << segments.length;
 
   // Try exact path and dynamic segment variants (e.g. /leads/:id -> leads/[id].ts).
   for (let mask = 0; mask < permutations; mask += 1) {
+    const params: Record<string, string> = {};
     const resolvedSegments = segments.map((segment, index) =>
-      (mask & (1 << index)) !== 0 ? '[id]' : segment
+      (mask & (1 << index)) !== 0
+        ? (params.id = segment, '[id]')
+        : segment
     );
 
-    candidates.add(path.join(apiDirectory, ...resolvedSegments) + '.ts');
-    candidates.add(path.join(apiDirectory, ...resolvedSegments) + '.js');
-  }
+    const candidates = [
+      path.join(apiDirectory, ...resolvedSegments) + '.ts',
+      path.join(apiDirectory, ...resolvedSegments) + '.js',
+    ];
 
-  for (const candidate of candidates) {
-    if (fs.existsSync(candidate)) {
-      return candidate;
+    for (const candidate of candidates) {
+      if (fs.existsSync(candidate)) {
+        return { handlerPath: candidate, params };
+      }
     }
   }
 
@@ -49,11 +54,23 @@ const resolveApiHandlerPath = (requestPath: string): string | null => {
 
 app.use('/api', async (req, res, next) => {
   try {
-    const handlerPath = resolveApiHandlerPath(req.path);
-    if (!handlerPath) {
+    const match = resolveApiHandlerMatch(req.path);
+    if (!match) {
       return next();
     }
 
+    const nextQuery = {
+      ...(req.query as Record<string, string | string[]>),
+      ...match.params,
+    };
+    Object.defineProperty(req, 'query', {
+      value: nextQuery,
+      configurable: true,
+      enumerable: true,
+      writable: true,
+    });
+
+    const handlerPath = match.handlerPath;
     const handlerModule = await import(pathToFileURL(handlerPath).href);
     const handler = handlerModule.default;
 

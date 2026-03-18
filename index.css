@@ -57,6 +57,114 @@ button:focus-visible {
   outline-offset: 2px;
 }
 
+.dashboard-shell,
+.dashboard-shell * {
+  transition:
+    background-color 180ms ease,
+    border-color 180ms ease,
+    color 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.dashboard-shell--dark {
+  color-scheme: dark;
+  background:
+    radial-gradient(circle at top left, rgba(255, 122, 0, 0.12), transparent 32%),
+    linear-gradient(180deg, #071018 0%, #0b121b 100%);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 32px;
+  box-shadow: 0 30px 90px rgba(2, 6, 23, 0.45);
+}
+
+.dashboard-shell--dark .dashboard-header {
+  background:
+    linear-gradient(135deg, rgba(12, 18, 28, 0.96) 0%, rgba(19, 25, 36, 0.98) 55%, rgba(12, 18, 28, 0.98) 100%) !important;
+  border-color: rgba(148, 163, 184, 0.16) !important;
+  box-shadow: 0 24px 90px rgba(2, 6, 23, 0.55) !important;
+}
+
+.dashboard-shell--dark .dashboard-header-card,
+.dashboard-shell--dark .dashboard-panel,
+.dashboard-shell--dark .dashboard-metric-card,
+.dashboard-shell--dark .dashboard-insight-card,
+.dashboard-shell--dark .dashboard-table,
+.dashboard-shell--dark .dashboard-empty-state,
+.dashboard-shell--dark .dashboard-detail-card,
+.dashboard-shell--dark .dashboard-tabrail {
+  background: linear-gradient(180deg, rgba(15, 23, 34, 0.94) 0%, rgba(10, 16, 24, 0.98) 100%) !important;
+  border-color: rgba(148, 163, 184, 0.16) !important;
+  box-shadow: 0 18px 40px rgba(2, 6, 23, 0.26);
+}
+
+.dashboard-shell--dark .dashboard-theme-toggle {
+  background: rgba(255, 122, 0, 0.12) !important;
+  color: #ffd7b2 !important;
+  border-color: rgba(255, 122, 0, 0.28) !important;
+}
+
+.dashboard-shell--dark .dashboard-input-control,
+.dashboard-shell--dark .dashboard-select-control {
+  background: rgba(15, 23, 34, 0.92) !important;
+  color: #f5f7fb !important;
+  border-color: rgba(148, 163, 184, 0.18) !important;
+}
+
+.dashboard-shell--dark .dashboard-input-control::placeholder {
+  color: #7f8b9c;
+}
+
+.dashboard-shell--dark [class~='bg-white'] {
+  background-color: rgba(15, 23, 34, 0.92) !important;
+}
+
+.dashboard-shell--dark [class*='bg-white/'] {
+  background-color: rgba(15, 23, 34, 0.78) !important;
+}
+
+.dashboard-shell--dark [class~='bg-neutral-50'] {
+  background-color: rgba(17, 25, 38, 0.88) !important;
+}
+
+.dashboard-shell--dark [class~='bg-neutral-100'] {
+  background-color: rgba(22, 32, 49, 0.95) !important;
+}
+
+.dashboard-shell--dark [class~='border-neutral-200'] {
+  border-color: rgba(148, 163, 184, 0.16) !important;
+}
+
+.dashboard-shell--dark [class~='border-neutral-300'] {
+  border-color: rgba(148, 163, 184, 0.24) !important;
+}
+
+.dashboard-shell--dark .text-brand-black {
+  color: #f5f7fb !important;
+}
+
+.dashboard-shell--dark .text-gray-700 {
+  color: #dbe4ee !important;
+}
+
+.dashboard-shell--dark .text-gray-600 {
+  color: #a8b4c4 !important;
+}
+
+.dashboard-shell--dark .text-gray-500 {
+  color: #8592a3 !important;
+}
+
+.dashboard-shell--dark [class*='hover:bg-brand-mclaren/5']:hover {
+  background-color: rgba(255, 122, 0, 0.1) !important;
+}
+
+.dashboard-shell--dark [class*='hover:text-brand-mclaren']:hover {
+  color: #ff9d4d !important;
+}
+
+.dashboard-shell--dark [class*='hover:border-brand-mclaren']:hover {
+  border-color: rgba(255, 122, 0, 0.45) !important;
+}
+
 /* ── Text strokes ───────────────────────────────────────────────────── */
 
 .text-outline {

@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getAuthContext, hasPermission } from '../../_lib/auth';
 import { getSupabaseAdmin } from '../../_lib/supabaseAdmin';
-import { forbidden, methodNotAllowed, serverError, unauthorized } from '../../_lib/http';
+import { forbidden, methodNotAllowed, readRouteId, serverError, unauthorized } from '../../_lib/http';
 import { parseDefaultRecipients, sendEnquiryAlertEmail } from '../../_lib/notifications';
 import { writeAuditLog } from '../../_lib/audit';
 
@@ -14,7 +14,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!auth) return unauthorized(res);
     if (!hasPermission(auth, 'notifications', 'write')) return forbidden(res);
 
-    const enquiryId = String(req.query.id || '');
+    const enquiryId = readRouteId(req, 1);
     if (!enquiryId) return res.status(400).json({ error: 'Missing enquiry id' });
 
     const { data: enquiry } = await supabase

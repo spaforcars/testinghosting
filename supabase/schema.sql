@@ -29,7 +29,13 @@ create table if not exists public.enquiries (
   service_addon_ids text[],
   source_page text not null,
   metadata jsonb not null default '{}'::jsonb,
-  created_at timestamptz not null default now()
+  booking_reference text unique,
+  booking_mode text,
+  status text not null default 'requested',
+  public_manage_token_hash text,
+  public_manage_token_expires_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
 );
 
 create table if not exists public.leads (
@@ -47,6 +53,9 @@ create table if not exists public.leads (
   vehicle_make text,
   vehicle_model text,
   vehicle_year int,
+  booking_mode text,
+  intake_metadata jsonb not null default '{}'::jsonb,
+  ai_metadata jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -82,6 +91,7 @@ create table if not exists public.service_jobs (
   service_addon_ids text[],
   status text not null default 'booked',
   scheduled_at timestamptz,
+  scheduled_end_at timestamptz,
   assignee_id uuid references auth.users(id) on delete set null,
   notes text,
   vehicle_make text,
@@ -89,7 +99,12 @@ create table if not exists public.service_jobs (
   vehicle_year int,
   estimated_amount numeric(12,2) not null default 0,
   payment_status text not null default 'unpaid',
+  booking_source text,
+  booking_reference text,
+  pickup_requested boolean not null default false,
+  pickup_address jsonb,
   completed_at timestamptz,
+  ai_metadata jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -109,8 +124,17 @@ alter table if exists public.clients add column if not exists archived boolean n
 
 alter table if exists public.enquiries add column if not exists service_catalog_id text;
 alter table if exists public.enquiries add column if not exists service_addon_ids text[];
+alter table if exists public.enquiries add column if not exists booking_reference text;
+alter table if exists public.enquiries add column if not exists booking_mode text;
+alter table if exists public.enquiries add column if not exists status text not null default 'requested';
+alter table if exists public.enquiries add column if not exists public_manage_token_hash text;
+alter table if exists public.enquiries add column if not exists public_manage_token_expires_at timestamptz;
+alter table if exists public.enquiries add column if not exists updated_at timestamptz not null default now();
 alter table if exists public.leads add column if not exists service_catalog_id text;
 alter table if exists public.leads add column if not exists service_addon_ids text[];
+alter table if exists public.leads add column if not exists booking_mode text;
+alter table if exists public.leads add column if not exists intake_metadata jsonb not null default '{}'::jsonb;
+alter table if exists public.leads add column if not exists ai_metadata jsonb not null default '{}'::jsonb;
 alter table if exists public.service_jobs add column if not exists assignee_id uuid references auth.users(id) on delete set null;
 alter table if exists public.service_jobs add column if not exists notes text;
 alter table if exists public.service_jobs add column if not exists service_catalog_id text;
@@ -123,7 +147,13 @@ alter table if exists public.service_jobs add column if not exists vehicle_model
 alter table if exists public.service_jobs add column if not exists vehicle_year int;
 alter table if exists public.service_jobs add column if not exists estimated_amount numeric(12,2) not null default 0;
 alter table if exists public.service_jobs add column if not exists payment_status text not null default 'unpaid';
+alter table if exists public.service_jobs add column if not exists scheduled_end_at timestamptz;
+alter table if exists public.service_jobs add column if not exists booking_source text;
+alter table if exists public.service_jobs add column if not exists booking_reference text;
+alter table if exists public.service_jobs add column if not exists pickup_requested boolean not null default false;
+alter table if exists public.service_jobs add column if not exists pickup_address jsonb;
 alter table if exists public.service_jobs add column if not exists completed_at timestamptz;
+alter table if exists public.service_jobs add column if not exists ai_metadata jsonb not null default '{}'::jsonb;
 
 -- Customer vehicles
 create table if not exists public.customer_vehicles (
@@ -138,6 +168,18 @@ create table if not exists public.customer_vehicles (
   notes text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
+);
+
+create table if not exists public.booking_assets (
+  id uuid primary key default gen_random_uuid(),
+  enquiry_id uuid not null references public.enquiries(id) on delete cascade,
+  lead_id uuid references public.leads(id) on delete set null,
+  storage_bucket text not null,
+  storage_path text not null,
+  original_filename text,
+  content_type text,
+  size_bytes bigint,
+  created_at timestamptz not null default now()
 );
 
 -- Job timeline events
@@ -203,6 +245,7 @@ create table if not exists public.notification_events (
   id uuid primary key default gen_random_uuid(),
   event_type text not null,
   entity_id uuid not null,
+  metadata jsonb not null default '{}'::jsonb,
   provider text not null default 'resend',
   provider_message_id text,
   status text not null default 'queued',
@@ -213,6 +256,32 @@ create table if not exists public.notification_events (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.ai_runs (
+  id uuid primary key default gen_random_uuid(),
+  entity_type text not null,
+  entity_id text not null,
+  feature_name text not null,
+  prompt_version text not null,
+  status text not null default 'queued',
+  provider text,
+  model text,
+  confidence numeric(4,3),
+  latency_ms int,
+  token_input_count int,
+  token_output_count int,
+  token_total_count int,
+  estimated_cost_usd numeric(12,6),
+  output_snapshot jsonb not null default '{}'::jsonb,
+  source_snapshot jsonb not null default '{}'::jsonb,
+  accepted_at timestamptz,
+  applied_at timestamptz,
+  dismissed_at timestamptz,
+  error_message text,
+  created_by uuid references auth.users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 -- Settings + audit
 create table if not exists public.system_settings (
   key text primary key,
@@ -220,6 +289,8 @@ create table if not exists public.system_settings (
   updated_by uuid references auth.users(id) on delete set null,
   updated_at timestamptz not null default now()
 );
+
+alter table if exists public.notification_events add column if not exists metadata jsonb not null default '{}'::jsonb;
 
 create table if not exists public.audit_logs (
   id uuid primary key default gen_random_uuid(),
@@ -276,29 +347,92 @@ values ('enquiry_alerts_enabled', 'true'::jsonb)
 on conflict (key) do nothing;
 
 insert into public.system_settings (key, value)
+values ('ops_notification_email', '""'::jsonb)
+on conflict (key) do nothing;
+
+insert into public.system_settings (key, value)
 values
   ('ops_v1_enabled', 'true'::jsonb),
   ('ops_billing_enabled', 'true'::jsonb),
   ('ops_reports_enabled', 'true'::jsonb)
 on conflict (key) do nothing;
 
+insert into public.system_settings (key, value)
+values (
+  'ai_settings',
+  '{
+    "enabled": true,
+    "provider": "groq",
+    "model": "openai/gpt-oss-20b",
+    "approvalMode": "human_required",
+    "reviewConfidenceThreshold": 0.65,
+    "features": {
+      "leadCopilot": true,
+      "replyDrafts": true,
+      "workBriefs": true,
+      "aftercareDrafts": true,
+      "dailyBriefs": true,
+      "visionAssessments": false
+    }
+  }'::jsonb
+)
+on conflict (key) do nothing;
+
+insert into public.system_settings (key, value)
+values (
+  'booking_settings',
+  '{
+    "timeZone": "America/Toronto",
+    "slotIntervalMinutes": 30,
+    "bookingWindowDays": 60,
+    "leadTimeHours": 12,
+    "defaultBufferMinutes": 30,
+    "manageTokenValidityHours": 720,
+    "requestResponseSla": "within 1 business day",
+    "businessHours": [
+      {"dayOfWeek": 1, "start": "08:00", "end": "18:00"},
+      {"dayOfWeek": 2, "start": "08:00", "end": "18:00"},
+      {"dayOfWeek": 3, "start": "08:00", "end": "18:00"},
+      {"dayOfWeek": 4, "start": "08:00", "end": "18:00"},
+      {"dayOfWeek": 5, "start": "08:00", "end": "18:00"},
+      {"dayOfWeek": 6, "start": "08:00", "end": "18:00"}
+    ]
+  }'::jsonb
+)
+on conflict (key) do nothing;
+
+insert into storage.buckets (id, name, public)
+values ('booking-assets', 'booking-assets', false)
+on conflict (id) do nothing;
+
 -- Indexes for heavy filters/searches
 create index if not exists idx_leads_status_created_at on public.leads(status, created_at desc);
 create index if not exists idx_leads_assignee_id on public.leads(assignee_id);
 create index if not exists idx_leads_source_page on public.leads(source_page);
 create index if not exists idx_leads_vehicle_lookup on public.leads(vehicle_make, vehicle_model, vehicle_year);
+create index if not exists idx_leads_booking_mode_created_at on public.leads(booking_mode, created_at desc);
+create index if not exists idx_leads_ai_metadata on public.leads using gin(ai_metadata);
 
 create index if not exists idx_service_jobs_status_scheduled_at on public.service_jobs(status, scheduled_at);
 create index if not exists idx_service_jobs_assignee_id on public.service_jobs(assignee_id);
 create index if not exists idx_service_jobs_client_id on public.service_jobs(client_id);
 create index if not exists idx_service_jobs_lead_id on public.service_jobs(lead_id);
+create index if not exists idx_notification_events_event_entity on public.notification_events(event_type, entity_id);
 create index if not exists idx_service_jobs_payment_status on public.service_jobs(payment_status);
 create index if not exists idx_service_jobs_completed_at on public.service_jobs(completed_at desc);
+create index if not exists idx_service_jobs_booking_reference on public.service_jobs(booking_reference);
+create index if not exists idx_service_jobs_booking_source on public.service_jobs(booking_source);
+create index if not exists idx_service_jobs_ai_metadata on public.service_jobs using gin(ai_metadata);
+create index if not exists idx_ai_runs_entity_created_at on public.ai_runs(entity_type, entity_id, created_at desc);
+create index if not exists idx_ai_runs_status_created_at on public.ai_runs(status, created_at desc);
+create index if not exists idx_ai_runs_feature_created_at on public.ai_runs(feature_name, created_at desc);
 
 create index if not exists idx_clients_archived_created_at on public.clients(archived, created_at desc);
 create index if not exists idx_clients_assignee_id on public.clients(assignee_id);
 
 create index if not exists idx_customer_vehicles_client_id on public.customer_vehicles(client_id);
+create index if not exists idx_booking_assets_enquiry_id on public.booking_assets(enquiry_id);
+create index if not exists idx_enquiries_booking_reference on public.enquiries(booking_reference);
 create index if not exists idx_job_timeline_service_job_id_created_at on public.job_timeline_events(service_job_id, created_at desc);
 
 create index if not exists idx_billing_records_status_due_at on public.billing_records(status, due_at);

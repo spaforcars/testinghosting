@@ -29,6 +29,14 @@ import {
   defaultServicesPageContent,
 } from './cmsDefaults';
 
+const defaultServiceOfferingLookup = new Map(
+  [
+    ...defaultServicesPageContent.detailingOfferings,
+    ...defaultServicesPageContent.specialtyServices,
+    ...defaultServicesPageContent.additionalServices,
+  ].map((offering) => [offering.id, offering] as const)
+);
+
 const ensureString = (value: unknown, fallback: string): string =>
   typeof value === 'string' && value.trim() ? value : fallback;
 
@@ -68,6 +76,8 @@ const adaptServiceOffering = (value: unknown): ServiceOffering | null => {
     return null;
   }
 
+  const fallback = defaultServiceOfferingLookup.get(id);
+
   return {
     id,
     title,
@@ -78,13 +88,30 @@ const adaptServiceOffering = (value: unknown): ServiceOffering | null => {
     fixedPriceAmount:
       typeof record.fixedPriceAmount === 'number' && Number.isFinite(record.fixedPriceAmount)
         ? record.fixedPriceAmount
-        : undefined,
+        : fallback?.fixedPriceAmount,
     duration: ensureString(record.duration, '') || undefined,
     image,
     features: ensureStringArray(record.features, []),
     notes: ensureString(record.notes, '') || undefined,
-    bookable: ensureBoolean(record.bookable, false),
-    addOnOnly: ensureBoolean(record.addOnOnly, false),
+    bookable: ensureBoolean(record.bookable, fallback?.bookable ?? false),
+    addOnOnly: ensureBoolean(record.addOnOnly, fallback?.addOnOnly ?? false),
+    bookingMode:
+      ensureString(record.bookingMode, fallback?.bookingMode || 'instant') === 'request'
+        ? 'request'
+        : 'instant',
+    slotDurationMinutes:
+      typeof record.slotDurationMinutes === 'number' && Number.isFinite(record.slotDurationMinutes)
+        ? record.slotDurationMinutes
+        : fallback?.slotDurationMinutes,
+    bufferMinutes:
+      typeof record.bufferMinutes === 'number' && Number.isFinite(record.bufferMinutes)
+        ? record.bufferMinutes
+        : fallback?.bufferMinutes,
+    allowsPickupRequest: ensureBoolean(record.allowsPickupRequest, fallback?.allowsPickupRequest ?? false),
+    intakeMode:
+      ensureString(record.intakeMode, fallback?.intakeMode || 'basic') === 'assessment'
+        ? 'assessment'
+        : 'basic',
   };
 };
 

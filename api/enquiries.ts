@@ -1,7 +1,12 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getSupabaseAdmin } from './_lib/supabaseAdmin';
 import { badRequest, methodNotAllowed, serverError } from './_lib/http';
-import { getRetryDelayMinutes, parseDefaultRecipients, sendEnquiryAlertEmail } from './_lib/notifications';
+import {
+  getOpsEmailsEnabled,
+  getOpsNotificationRecipients,
+  getRetryDelayMinutes,
+  sendEnquiryAlertEmail,
+} from './_lib/notifications';
 import { writeAuditLog } from './_lib/audit';
 import { notifyRoles } from './_lib/inAppNotifications';
 import { normalizeServiceAddonIds, normalizeServiceCatalogId } from './_lib/serviceSelection';
@@ -17,27 +22,6 @@ interface CreateEnquiryBody {
   sourcePage?: string;
   metadata?: Record<string, unknown>;
 }
-
-const getEnabledRecipients = async (supabase: ReturnType<typeof getSupabaseAdmin>) => {
-  const { data } = await supabase
-    .from('admin_notification_recipients')
-    .select('email')
-    .eq('enabled', true);
-
-  if (data?.length) {
-    return data.map((row) => row.email).filter(Boolean);
-  }
-  return parseDefaultRecipients();
-};
-
-const getAlertsEnabled = async (supabase: ReturnType<typeof getSupabaseAdmin>) => {
-  const { data } = await supabase
-    .from('system_settings')
-    .select('value')
-    .eq('key', 'enquiry_alerts_enabled')
-    .maybeSingle();
-  return data?.value !== false;
-};
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return methodNotAllowed(res);
@@ -97,6 +81,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .insert({
         event_type: 'enquiry_created',
         entity_id: enquiry.id,
+        metadata: {
+          source: 'enquiry',
+        },
         provider: 'resend',
         status: 'queued',
         attempt_count: 0,
@@ -108,12 +95,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       console.warn('Notification event insert failed:', notificationInsertError.message);
     }
 
-    const alertsEnabled = await getAlertsEnabled(supabase);
+    const alertsEnabled = await getOpsEmailsEnabled(supabase);
     let emailStatus: 'sent' | 'failed' | 'disabled' = 'disabled';
     let notificationError: string | null = null;
 
     if (alertsEnabled) {
-      const recipients = await getEnabledRecipients(supabase);
+      const recipients = await getOpsNotificationRecipients(supabase);
       const sendResult = await sendEnquiryAlertEmail(recipients, {
         enquiryId: enquiry.id,
         name: enquiry.name,

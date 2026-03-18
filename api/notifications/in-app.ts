@@ -4,6 +4,10 @@ import { getSupabaseAdmin } from '../_lib/supabaseAdmin';
 import { forbidden, methodNotAllowed, serverError, unauthorized } from '../_lib/http';
 import { isFeatureEnabled } from '../_lib/featureFlags';
 
+const isMissingTableError = (message: string, table: string) =>
+  message.includes(`Could not find the table 'public.${table}'`) ||
+  new RegExp(`relation ["']?public\\.${table}["']? does not exist`, 'i').test(message);
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'GET') return methodNotAllowed(res);
 
@@ -31,7 +35,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const { data, error } = await query;
-    if (error) throw new Error(error.message);
+    if (error) {
+      if (isMissingTableError(error.message, 'in_app_notifications')) {
+        return res.status(200).json({ notifications: [] });
+      }
+      throw new Error(error.message);
+    }
 
     return res.status(200).json({ notifications: data || [] });
   } catch (error) {

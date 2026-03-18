@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getAuthContext, hasPermission } from '../../../_lib/auth';
 import { getSupabaseAdmin } from '../../../_lib/supabaseAdmin';
-import { badRequest, forbidden, methodNotAllowed, serverError, unauthorized } from '../../../_lib/http';
+import { badRequest, forbidden, methodNotAllowed, readRouteId, serverError, unauthorized } from '../../../_lib/http';
 import { isFeatureEnabled } from '../../../_lib/featureFlags';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -16,7 +16,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const opsEnabled = await isFeatureEnabled(supabase, 'ops_v1_enabled', true);
     if (!opsEnabled) return forbidden(res);
 
-    const id = String(req.query.id || '');
+    const id = readRouteId(req, 1);
     if (!id) return badRequest(res, 'notification id is required');
 
     const { data: notification, error: fetchError } = await supabase

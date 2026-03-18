@@ -1,10 +1,18 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getAuthContext, hasPermission } from '../_lib/auth';
 import { getSupabaseAdmin } from '../_lib/supabaseAdmin';
-import { badRequest, forbidden, methodNotAllowed, serverError, unauthorized } from '../_lib/http';
+import { badRequest, forbidden, methodNotAllowed, readRouteId, serverError, unauthorized } from '../_lib/http';
 import { writeAuditLog } from '../_lib/audit';
 import { isFeatureEnabled } from '../_lib/featureFlags';
 import { mapJobToUiStatus, mapLeadToUiStatus } from '../_lib/dashboardStatus';
+
+const isMissingColumnError = (message: string, column: string) =>
+  message.includes(`Could not find the '${column}' column`) ||
+  new RegExp(`column\\s+(?:[a-z0-9_]+\\.)?${column}\\s+does not exist`, 'i').test(message);
+
+const isMissingTableError = (message: string, table: string) =>
+  message.includes(`Could not find the table 'public.${table}'`) ||
+  new RegExp(`relation\\s+"(?:public\\.)?${table}"\\s+does not exist`, 'i').test(message);
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
@@ -15,7 +23,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const opsEnabled = await isFeatureEnabled(supabase, 'ops_v1_enabled', true);
     if (!opsEnabled) return forbidden(res);
 
-    const clientId = String(req.query.id || '');
+    const clientId = readRouteId(req);
     if (!clientId) return badRequest(res, 'client id is required');
 
     if (req.method === 'GET') {
@@ -62,11 +70,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       if (clientResult.error) throw new Error(clientResult.error.message);
       if (!clientResult.data) return badRequest(res, 'Client not found');
-      if (vehiclesResult.error) throw new Error(vehiclesResult.error.message);
+      if (vehiclesResult.error && !isMissingTableError(vehiclesResult.error.message, 'customer_vehicles')) {
+        throw new Error(vehiclesResult.error.message);
+      }
       if (jobsResult.error) throw new Error(jobsResult.error.message);
       if (leadsResult.error) throw new Error(leadsResult.error.message);
-      if (timelineResult.error) throw new Error(timelineResult.error.message);
-      if (billingResult.error) throw new Error(billingResult.error.message);
+      if (timelineResult.error && !isMissingTableError(timelineResult.error.message, 'job_timeline_events')) {
+        throw new Error(timelineResult.error.message);
+      }
+      if (billingResult.error && !isMissingTableError(billingResult.error.message, 'billing_records')) {
+        throw new Error(billingResult.error.message);
+      }
 
       const linkedLeadIds = new Set((jobsResult.data || []).map((job) => job.lead_id).filter(Boolean));
       const relatedLeads = (leadsResult.data || []).filter((lead) => {
@@ -132,12 +146,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       if (!Object.keys(updates).length) return badRequest(res, 'No updates provided');
 
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from('clients')
         .update(updates)
         .eq('id', clientId)
         .select('*')
         .single();
+
+      if (error && isMissingColumnError(error.message, 'archived') && 'archived' in updates) {
+        const { archived, ...legacyUpdates } = updates;
+        ({ data, error } = await supabase
+          .from('clients')
+          .update(legacyUpdates)
+          .eq('id', clientId)
+          .select('*')
+          .single());
+      }
 
       if (error) throw new Error(error.message);
 

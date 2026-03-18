@@ -23,18 +23,37 @@ const AuthGate: React.FC<AuthGateProps> = ({ title, children }) => {
       return;
     }
 
-    supabase.auth.getSession().then(({ data }) => {
-      setIsAuthenticated(Boolean(data.session));
-      setLoading(false);
-    });
+    let mounted = true;
+
+    const syncSession = async () => {
+      const { data } = await supabase.auth.getSession();
+      let session = data.session;
+      const isExpired =
+        typeof session?.expires_at === 'number' && session.expires_at * 1000 <= Date.now() + 10_000;
+
+      if (!session?.access_token || isExpired) {
+        const refreshed = await supabase.auth.refreshSession();
+        session = refreshed.data.session || null;
+      }
+
+      if (mounted) {
+        setIsAuthenticated(Boolean(session?.access_token));
+        setLoading(false);
+      }
+    };
+
+    void syncSession();
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
-      setIsAuthenticated(Boolean(session));
+      setIsAuthenticated(Boolean(session?.access_token));
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   if (!hasSupabaseClientEnv) {

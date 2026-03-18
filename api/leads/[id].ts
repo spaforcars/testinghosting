@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getAuthContext, hasPermission } from '../_lib/auth';
 import { getSupabaseAdmin } from '../_lib/supabaseAdmin';
-import { badRequest, forbidden, methodNotAllowed, serverError, unauthorized } from '../_lib/http';
+import { badRequest, forbidden, methodNotAllowed, readRouteId, serverError, unauthorized } from '../_lib/http';
 import { writeAuditLog } from '../_lib/audit';
 import { createInAppNotification } from '../_lib/inAppNotifications';
 import { isFeatureEnabled } from '../_lib/featureFlags';
@@ -20,7 +20,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const opsEnabled = await isFeatureEnabled(supabase, 'ops_v1_enabled', true);
     if (!opsEnabled) return forbidden(res);
 
-    const id = String(req.query.id || '');
+    const id = readRouteId(req);
     if (!id) return badRequest(res, 'id is required');
 
     const body = req.body as {
@@ -36,6 +36,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       vehicleModel?: string | null;
       vehicleYear?: number | null;
       notes?: string | null;
+      bookingMode?: 'instant' | 'request' | null;
+      intakeMetadata?: Record<string, unknown> | null;
     };
 
     if (
@@ -49,7 +51,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       typeof body.email === 'undefined' &&
       typeof body.vehicleMake === 'undefined' &&
       typeof body.vehicleModel === 'undefined' &&
-      typeof body.vehicleYear === 'undefined'
+      typeof body.vehicleYear === 'undefined' &&
+      typeof body.bookingMode === 'undefined' &&
+      typeof body.intakeMetadata === 'undefined'
     ) {
       return badRequest(res, 'At least one update field is required');
     }
@@ -79,6 +83,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (typeof body.vehicleMake !== 'undefined') updates.vehicle_make = body.vehicleMake || null;
     if (typeof body.vehicleModel !== 'undefined') updates.vehicle_model = body.vehicleModel || null;
     if (typeof body.vehicleYear !== 'undefined') updates.vehicle_year = body.vehicleYear || null;
+    if (typeof body.bookingMode !== 'undefined') updates.booking_mode = body.bookingMode || null;
+    if (typeof body.intakeMetadata !== 'undefined') updates.intake_metadata = body.intakeMetadata || {};
+    updates.updated_at = new Date().toISOString();
 
     const { data, error } = await supabase
       .from('leads')

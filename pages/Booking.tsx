@@ -1,1116 +1,741 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import {
-  ArrowLeft,
-  Car,
-  CheckCircle2,
-  ChevronLeft,
-  ChevronRight,
-  Clock3,
-  Shield,
-  Sparkles,
-  Star,
-} from 'lucide-react';
+import { CalendarDays, CheckCircle2, ImagePlus, LoaderCircle, Sparkles, X } from 'lucide-react';
 import Button from '../components/Button';
 import ServiceNotice from '../components/ServiceNotice';
-import { apiRequest, ApiError } from '../lib/apiClient';
-import { useCmsPage } from '../hooks/useCmsPage';
+import { ApiError, apiRequest } from '../lib/apiClient';
 import { defaultServicesPageContent } from '../lib/cmsDefaults';
 import { adaptServicesContent } from '../lib/contentAdapter';
-import {
-  buildServiceLabel,
-  getAddOnOfferings,
-  getOfferingById,
-  getPrimaryOfferings,
-  groupOfferingsByCategory,
-} from '../lib/serviceCatalog';
+import { getAddOnOfferings, getOfferingById, getPrimaryOfferings, groupOfferingsByCategory } from '../lib/serviceCatalog';
+import { getSupabaseBrowserClient } from '../lib/supabaseBrowser';
+import { useCmsPage } from '../hooks/useCmsPage';
 import type { ServiceOffering } from '../types/cms';
 
-const bookingSteps = [
-  {
-    number: '01',
-    title: 'Choose the finish',
-    description: 'Pick the package that matches the level of transformation you want.',
-  },
-  {
-    number: '02',
-    title: 'Lock the slot',
-    description: 'Choose the day and time window that works for your schedule.',
-  },
-  {
-    number: '03',
-    title: 'Tell us about the car',
-    description: 'Add vehicle details so we can confirm prep, timing, and expectations.',
-  },
-] as const;
+type Step = 1 | 2 | 3;
+type Errors = Record<string, string>;
+type UploadedAsset = { path: string; bucket: string; originalFilename: string; contentType: string; sizeBytes: number };
+type AvailabilityResponse = { timeZone: string; slots: Array<{ startAt: string; endAt: string; label: string }> };
+type BookingResponse = {
+  bookingReference: string;
+  bookingMode: 'instant' | 'request';
+  status: 'confirmed' | 'requested';
+  scheduledAt?: string | null;
+  manageUrl: string;
+  customerEmailStatus: 'sent' | 'failed';
+};
 
-const bookingSignals = [
-  {
-    icon: Sparkles,
-    title: 'Showroom energy',
-    description: 'Packages built around visible payoff, not just a long checklist.',
-  },
-  {
-    icon: Shield,
-    title: 'Up-front pricing',
-    description: 'Published package pricing keeps the booking flow clear and confident.',
-  },
-  {
-    icon: Clock3,
-    title: 'Fast follow-up',
-    description: 'Your request gets confirmed by phone or email after submission.',
-  },
-] as const;
+const dateKey = (date: Date, timeZone: string) =>
+  new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' })
+    .format(date)
+    .replaceAll('/', '-');
+
+const dateLabel = (date: Date, timeZone: string) =>
+  new Intl.DateTimeFormat('en-CA', { timeZone, weekday: 'short', month: 'short', day: 'numeric' }).format(date);
+
+const dateTimeLabel = (value: string | null | undefined, timeZone: string) => {
+  if (!value) return 'Not selected yet';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Not selected yet';
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  }).format(date);
+};
+
+const nextDates = (count: number, timeZone: string) => {
+  const dates: Date[] = [];
+  let cursor = new Date();
+  cursor.setHours(12, 0, 0, 0);
+  while (dates.length < count) {
+    const weekday = new Intl.DateTimeFormat('en-US', { timeZone, weekday: 'short' }).format(cursor);
+    if (weekday !== 'Sun') dates.push(new Date(cursor));
+    cursor = new Date(cursor.getTime() + 24 * 60 * 60 * 1000);
+  }
+  return dates;
+};
+
+const Field: React.FC<{
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  type?: string;
+  error?: string;
+  required?: boolean;
+  textarea?: boolean;
+}> = ({ label, value, onChange, placeholder = '', type = 'text', error, required, textarea = false }) => (
+  <label className="block">
+    <div className="mb-2 flex items-center gap-2">
+      <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-500">{label}</span>
+      {required && <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-mclaren">Required</span>}
+    </div>
+    {textarea ? (
+      <textarea
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        className={`h-32 w-full resize-none rounded-[20px] border bg-[#f7f4ee] px-4 py-3 text-base text-brand-black outline-none ${error ? 'border-red-400' : 'border-black/[0.08]'}`}
+      />
+    ) : (
+      <input
+        type={type}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        className={`w-full rounded-[20px] border bg-[#f7f4ee] px-4 py-3 text-base text-brand-black outline-none ${error ? 'border-red-400' : 'border-black/[0.08]'}`}
+      />
+    )}
+    {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+  </label>
+);
 
 const Booking: React.FC = () => {
   const location = useLocation();
   const { data: servicesCmsData } = useCmsPage('services', defaultServicesPageContent);
-  const servicesContent = adaptServicesContent(servicesCmsData);
-
+  const servicesContent = useMemo(() => adaptServicesContent(servicesCmsData), [servicesCmsData]);
   const primaryOfferings = useMemo(() => getPrimaryOfferings(servicesContent), [servicesContent]);
+  const grouped = useMemo(() => groupOfferingsByCategory(primaryOfferings), [primaryOfferings]);
   const addOnOfferings = useMemo(() => getAddOnOfferings(servicesContent), [servicesContent]);
-  const groupedPrimaryOfferings = useMemo(
-    () => groupOfferingsByCategory(primaryOfferings),
-    [primaryOfferings]
+  const vehicleOptions = useMemo(
+    () => [...new Set([...servicesContent.detailingPackages.map((item) => item.vehicleType), 'Other / not sure'])],
+    [servicesContent.detailingPackages]
   );
+  const vehicleMap = useMemo(() => {
+    const map = new Map<string, string>();
+    servicesContent.detailingPackages.forEach((row) => {
+      map.set(row.fullDetailId, row.vehicleType);
+      map.set(row.interiorOnlyId, row.vehicleType);
+    });
+    return map;
+  }, [servicesContent.detailingPackages]);
 
-  const [step, setStep] = useState(1);
-  const [selectedServiceId, setSelectedServiceId] = useState<string>('');
-  const [selectedAddOnIds, setSelectedAddOnIds] = useState<string[]>([]);
-  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
-  const [selectedTime, setSelectedTime] = useState<string | null>(null);
-  const [currentMonth, setCurrentMonth] = useState(new Date());
-  const [submitted, setSubmitted] = useState(false);
+  const [step, setStep] = useState<Step>(1);
+  const [vehicleType, setVehicleType] = useState('');
+  const [serviceId, setServiceId] = useState('');
+  const [addOnIds, setAddOnIds] = useState<string[]>([]);
+  const [availabilityTimeZone, setAvailabilityTimeZone] = useState('America/Toronto');
+  const [selectedDate, setSelectedDate] = useState('');
+  const [selectedSlot, setSelectedSlot] = useState('');
+  const [slots, setSlots] = useState<Array<{ startAt: string; endAt: string; label: string }>>([]);
+  const [loadingSlots, setLoadingSlots] = useState(false);
+  const [availabilityError, setAvailabilityError] = useState('');
+  const [preferredDate, setPreferredDate] = useState('');
+  const [backupDate, setBackupDate] = useState('');
+  const [timeWindow, setTimeWindow] = useState('');
+  const [issueDetails, setIssueDetails] = useState('');
+  const [notes, setNotes] = useState('');
+  const [pickupRequested, setPickupRequested] = useState(false);
+  const [pickupAddress, setPickupAddress] = useState({ addressLine1: '', city: '', province: '', postalCode: '', notes: '' });
+  const [contact, setContact] = useState({ fullName: '', email: '', phone: '', vehicleMake: '', vehicleModel: '', vehicleYear: '', vehicleDescription: '' });
+  const [assets, setAssets] = useState<UploadedAsset[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState('');
+  const [errors, setErrors] = useState<Errors>({});
+  const [submitError, setSubmitError] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState<string | null>(null);
-  const [details, setDetails] = useState({
-    fullName: '',
-    email: '',
-    phone: '',
-    vehicle: '',
-    notes: '',
-  });
+  const [submission, setSubmission] = useState<BookingResponse | null>(null);
 
-  const selectedService = useMemo(
-    () => getOfferingById(servicesContent, selectedServiceId),
-    [selectedServiceId, servicesContent]
-  );
+  const selectedService = useMemo(() => getOfferingById(servicesContent, serviceId), [serviceId, servicesContent]);
   const selectedAddOns = useMemo(
-    () =>
-      selectedAddOnIds
-        .map((id) => getOfferingById(servicesContent, id))
-        .filter((service): service is ServiceOffering => Boolean(service)),
-    [selectedAddOnIds, servicesContent]
+    () => addOnIds.map((id) => getOfferingById(servicesContent, id)).filter((item): item is ServiceOffering => Boolean(item)),
+    [addOnIds, servicesContent]
   );
+  const visibleGroups = useMemo(
+    () =>
+      grouped
+        .map((group) => ({
+          ...group,
+          offerings: group.offerings.filter((service) => {
+            const mapped = vehicleMap.get(service.id);
+            if (!mapped || !vehicleType || vehicleType === 'Other / not sure') return true;
+            return mapped === vehicleType;
+          }),
+        }))
+        .filter((group) => group.offerings.length),
+    [grouped, vehicleMap, vehicleType]
+  );
+  const dateOptions = useMemo(() => nextDates(16, availabilityTimeZone), [availabilityTimeZone]);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
-    const serviceId = params.get('service');
-    const addOnId = params.get('addon');
-
-    if (serviceId && primaryOfferings.some((service) => service.id === serviceId)) {
-      setSelectedServiceId(serviceId);
+    const prefilledService = params.get('service');
+    if (prefilledService && primaryOfferings.some((service) => service.id === prefilledService)) {
+      setServiceId(prefilledService);
+      const hint = vehicleMap.get(prefilledService);
+      if (hint) {
+        setVehicleType(hint);
+        setStep(2);
+      }
     }
+  }, [location.search, primaryOfferings, vehicleMap]);
 
-    if (addOnId && addOnOfferings.some((service) => service.id === addOnId)) {
-      setSelectedAddOnIds((current) => (current.includes(addOnId) ? current : [...current, addOnId]));
-    }
-  }, [addOnOfferings, location.search, primaryOfferings]);
-
-  const daysInMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
-  const firstDayOfMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth(), 1).getDay();
-  const timeSlots = ['09:00 AM', '10:00 AM', '11:00 AM', '01:00 PM', '02:00 PM', '03:00 PM', '04:00 PM'];
-
-  const formatMonth = (date: Date) =>
-    date.toLocaleString('default', { month: 'long', year: 'numeric' });
-
-  const formatSelectedDate = (date: Date | null) =>
-    date
-      ? date.toLocaleDateString(undefined, {
-          weekday: 'short',
-          month: 'short',
-          day: 'numeric',
-          year: 'numeric',
-        })
-      : 'Not selected yet';
-
-  const generateDays = () => {
-    const days = [];
-    const totalDays = daysInMonth(currentMonth);
-    const startDay = firstDayOfMonth(currentMonth);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    for (let i = 0; i < startDay; i += 1) {
-      days.push(<div key={`empty-${i}`} className="h-12 rounded-2xl bg-transparent" />);
-    }
-
-    for (let i = 1; i <= totalDays; i += 1) {
-      const date = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), i);
-      date.setHours(0, 0, 0, 0);
-
-      const isSelected = selectedDate?.toDateString() === date.toDateString();
-      const isToday = new Date().toDateString() === date.toDateString();
-      const isPast = date < today;
-
-      days.push(
-        <button
-          key={i}
-          disabled={isPast}
-          onClick={() => {
-            setSelectedDate(date);
-            setSelectedTime(null);
-          }}
-          className={`relative h-12 rounded-2xl text-sm font-semibold transition-all duration-300 ${
-            isSelected
-              ? 'border border-brand-mclaren bg-brand-black text-white shadow-[0_20px_40px_-20px_rgba(255,122,0,0.65)]'
-              : isPast
-                ? 'cursor-not-allowed bg-neutral-100 text-neutral-400'
-                : 'border border-black/[0.08] bg-white text-brand-black hover:-translate-y-0.5 hover:border-brand-mclaren/50 hover:bg-brand-mclaren/[0.04]'
-          }`}
-        >
-          {i}
-          {isToday && !isSelected && (
-            <span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-brand-mclaren" />
-          )}
-        </button>
-      );
-    }
-
-    return days;
-  };
-
-  const toggleAddOn = (addOnId: string) => {
-    setSelectedAddOnIds((current) =>
-      current.includes(addOnId) ? current.filter((id) => id !== addOnId) : [...current, addOnId]
+  useEffect(() => {
+    setAddOnIds((current) =>
+      current.filter((addOnId) => addOnOfferings.some((addOn) => addOn.id === addOnId))
     );
-  };
+  }, [addOnOfferings]);
 
-  const handleConfirm = async () => {
-    if (!details.fullName || !details.email || !details.phone || !selectedService || !selectedDate || !selectedTime) {
+  useEffect(() => {
+    if (!selectedService || selectedService.bookingMode !== 'instant' || !selectedDate) {
+      setSlots([]);
       return;
     }
 
-    setSubmitting(true);
-    setSubmitError(null);
+    let active = true;
+    setLoadingSlots(true);
+    setAvailabilityError('');
+    apiRequest<AvailabilityResponse>(
+      `/api/booking/availability?serviceId=${encodeURIComponent(selectedService.id)}&date=${encodeURIComponent(selectedDate)}${
+        addOnIds.length ? `&addOnIds=${encodeURIComponent(addOnIds.join(','))}` : ''
+      }`
+    )
+      .then((response) => {
+        if (!active) return;
+        setAvailabilityTimeZone(response.timeZone || 'America/Toronto');
+        setSlots(response.slots);
+      })
+      .catch((error) => {
+        if (!active) return;
+        setSlots([]);
+        setAvailabilityError(error instanceof ApiError ? error.message : 'Failed to load availability');
+      })
+      .finally(() => {
+        if (active) setLoadingSlots(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [addOnIds, selectedDate, selectedService]);
 
+  useEffect(() => {
+    setSelectedSlot('');
+  }, [selectedDate]);
+
+  const clearError = (key: string) =>
+    setErrors((current) => {
+      if (!(key in current)) return current;
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
+
+  const validate = (target: Step) => {
+    const next: Errors = {};
+    if (target >= 1) {
+      if (!vehicleType) next.vehicleType = 'Choose the vehicle profile.';
+      if (!selectedService) next.service = 'Select a service.';
+    }
+    if (target >= 2 && selectedService) {
+      if (selectedService.bookingMode === 'instant') {
+        if (!selectedDate) next.selectedDate = 'Choose a day.';
+        if (!selectedSlot) next.selectedSlot = 'Choose an available slot.';
+      } else {
+        if (!preferredDate) next.preferredDate = 'Choose the preferred date.';
+        if (!timeWindow) next.timeWindow = 'Choose the preferred time window.';
+        if (!issueDetails.trim()) next.issueDetails = 'Describe the issue or assessment goal.';
+      }
+    }
+    if (target >= 3) {
+      if (!contact.fullName.trim()) next.fullName = 'Enter the full name.';
+      if (!contact.email.trim()) next.email = 'Enter the email address.';
+      if (!contact.phone.trim()) next.phone = 'Enter the phone number.';
+      if (pickupRequested && selectedService?.allowsPickupRequest) {
+        if (!pickupAddress.addressLine1.trim()) next.pickupAddressLine1 = 'Enter the pickup address.';
+        if (!pickupAddress.city.trim()) next.pickupCity = 'Enter the city.';
+        if (!pickupAddress.province.trim()) next.pickupProvince = 'Enter the province.';
+        if (!pickupAddress.postalCode.trim()) next.pickupPostalCode = 'Enter the postal code.';
+      }
+    }
+    setErrors(next);
+    return Object.keys(next).length === 0;
+  };
+
+  const uploadFiles = async (files: FileList | null) => {
+    if (!files?.length) return;
+    const supabase = getSupabaseBrowserClient();
+    if (!supabase) {
+      setUploadError('Photo uploads are unavailable because Supabase is not configured in the browser.');
+      return;
+    }
+    setUploading(true);
+    setUploadError('');
     try {
-      await apiRequest('/api/enquiries', {
+      const next: UploadedAsset[] = [];
+      for (const file of Array.from(files).slice(0, 5)) {
+        const uploadConfig = await apiRequest<{ bucket: string; path: string; token: string }>('/api/bookings/upload-url', {
+          method: 'POST',
+          body: JSON.stringify({ filename: file.name, contentType: file.type || 'application/octet-stream' }),
+        });
+        const result = await supabase.storage.from(uploadConfig.bucket).uploadToSignedUrl(uploadConfig.path, uploadConfig.token, file);
+        if (result.error) throw new Error(result.error.message);
+        next.push({ bucket: uploadConfig.bucket, path: uploadConfig.path, originalFilename: file.name, contentType: file.type || 'application/octet-stream', sizeBytes: file.size });
+      }
+      setAssets((current) => [...current, ...next]);
+    } catch (error) {
+      setUploadError(error instanceof Error ? error.message : 'Failed to upload files');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const submit = async () => {
+    if (!selectedService || !validate(3)) return;
+    setSubmitting(true);
+    setSubmitError('');
+    try {
+      const response = await apiRequest<BookingResponse>('/api/bookings', {
         method: 'POST',
         body: JSON.stringify({
-          name: details.fullName,
-          email: details.email,
-          phone: details.phone,
-          message: details.notes || `Booking request for ${details.vehicle || 'vehicle details pending'}`,
-          serviceType: buildServiceLabel(selectedService, selectedAddOns, selectedService.title),
-          serviceCatalogId: selectedService.id,
-          serviceAddonIds: selectedAddOnIds,
-          sourcePage: 'booking',
-          metadata: {
-            selectedDate: selectedDate.toISOString(),
-            selectedTime,
-            vehicle: details.vehicle,
-            selectedServiceId: selectedService.id,
-            selectedServiceTitle: selectedService.title,
-            selectedAddOnIds,
-            selectedAddOnTitles: selectedAddOns.map((service) => service.title),
-          },
+          serviceId: selectedService.id,
+          addOnIds,
+          vehicleType,
+          vehicleMake: contact.vehicleMake || undefined,
+          vehicleModel: contact.vehicleModel || undefined,
+          vehicleYear: contact.vehicleYear ? Number(contact.vehicleYear) : undefined,
+          vehicleDescription: contact.vehicleDescription || undefined,
+          scheduledAt: selectedService.bookingMode === 'instant' ? selectedSlot : undefined,
+          preferredDate: selectedService.bookingMode === 'request' ? preferredDate : undefined,
+          preferredDateTo: selectedService.bookingMode === 'request' ? backupDate : undefined,
+          preferredTimeWindow: selectedService.bookingMode === 'request' ? timeWindow : undefined,
+          issueDetails: issueDetails || undefined,
+          notes: notes || undefined,
+          pickupRequested: selectedService.allowsPickupRequest ? pickupRequested : false,
+          pickupAddress: pickupRequested ? pickupAddress : undefined,
+          assets,
+          contact: { fullName: contact.fullName, email: contact.email, phone: contact.phone },
         }),
       });
-      setSubmitted(true);
+      setSubmission(response);
     } catch (error) {
-      setSubmitError(error instanceof ApiError ? error.message : 'Failed to submit booking request');
+      setSubmitError(error instanceof ApiError ? error.message : 'Failed to submit booking');
     } finally {
       setSubmitting(false);
     }
   };
 
-  const serviceSummary = selectedService
-    ? buildServiceLabel(selectedService, selectedAddOns, selectedService.title)
-    : 'Pick the service that matches the result you want.';
-  const heroService = selectedService ?? primaryOfferings[0] ?? null;
-  const currentStep = bookingSteps[step - 1];
-  const progressWidth = step === 1 ? '33%' : step === 2 ? '66%' : '100%';
-  const spotlightFeatures = selectedService?.features.slice(0, 3) ?? [
-    'Interior reset',
-    'Exterior gloss',
-    'Protection options',
-  ];
+  if (submission && selectedService) {
+    return (
+      <div className="min-h-screen bg-[#f2eee6] px-4 py-10">
+        <div className="mx-auto max-w-4xl rounded-[36px] bg-brand-black text-white shadow-[0_40px_120px_-60px_rgba(0,0,0,0.85)]">
+          <div className="bg-[radial-gradient(circle_at_top,rgba(255,122,0,0.32),transparent_40%)] px-6 py-14 text-center md:px-12">
+            <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-brand-mclaren">
+              <CheckCircle2 className="h-10 w-10" />
+            </div>
+            <p className="mt-6 text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-mclaren">
+              {submission.bookingMode === 'instant' ? 'Booking confirmed' : 'Request received'}
+            </p>
+            <h1 className="mt-4 font-display text-4xl font-semibold uppercase">
+              {submission.bookingMode === 'instant' ? 'You are on the calendar.' : 'The request is in motion.'}
+            </h1>
+            <p className="mx-auto mt-4 max-w-2xl text-base leading-7 text-white/72">
+              {submission.bookingMode === 'instant'
+                ? `${selectedService.title} is booked for ${dateTimeLabel(submission.scheduledAt, availabilityTimeZone)}.`
+                : 'The team will review the request and follow up within 1 business day.'}
+            </p>
+          </div>
+          <div className="grid gap-4 px-6 pb-10 md:grid-cols-2 md:px-12">
+            <div className="rounded-[24px] border border-white/10 bg-white/6 p-5">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/50">Booking reference</p>
+              <p className="mt-2 font-display text-2xl font-semibold">{submission.bookingReference}</p>
+            </div>
+            <div className="rounded-[24px] border border-white/10 bg-white/6 p-5">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/50">Service</p>
+              <p className="mt-2 text-lg font-medium">{selectedService.title}</p>
+              <p className="mt-3 text-sm text-white/65">Customer email: {submission.customerEmailStatus === 'sent' ? 'sent' : 'delivery pending'}</p>
+            </div>
+            <a href={submission.manageUrl} className="inline-flex items-center justify-center rounded-full bg-brand-mclaren px-6 py-3 text-sm font-semibold uppercase tracking-[0.14em] text-white">
+              Manage booking
+            </a>
+          </div>
+        </div>
+        <ServiceNotice />
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-[#f3f1ec]">
-      <section className="relative isolate overflow-hidden bg-brand-black px-4 pb-20 pt-16 text-white md:pb-24 md:pt-24">
-        {heroService && (
-          <img
-            src={heroService.image}
-            alt={heroService.title}
-            className="absolute inset-0 h-full w-full object-cover opacity-30"
-          />
-        )}
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,122,0,0.28),transparent_32%),linear-gradient(115deg,rgba(10,10,10,0.96),rgba(10,10,10,0.8),rgba(10,10,10,0.96))]" />
-        <div className="absolute -left-24 top-20 h-72 w-72 rounded-full bg-brand-mclaren/20 blur-3xl" />
-        <div className="absolute right-0 top-0 h-96 w-96 rounded-full bg-white/5 blur-3xl" />
-
-        <div className="mx-auto grid max-w-7xl gap-10 lg:grid-cols-[1.1fr_0.9fr]">
-          <div className="relative z-10 animate-fade-in">
-            <span className="inline-flex items-center gap-2 rounded-full border border-brand-mclaren/30 bg-brand-mclaren/10 px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-mclaren">
-              Signature Booking Flow
-            </span>
-            <h1 className="mt-6 max-w-4xl font-display text-5xl font-bold uppercase leading-[0.9] tracking-tight md:text-7xl">
-              Book the
-              <span className="block text-brand-mclaren">showroom moment.</span>
-            </h1>
-            <p className="mt-5 max-w-2xl text-base leading-7 text-white/72 md:text-lg">
-              Choose the transformation, lock the time, and let the appointment feel as premium as
-              the finish you are booking.
+    <div className="min-h-screen bg-[#f2eee6]">
+      <section className="bg-brand-black px-4 pb-16 pt-16 text-white">
+        <div className="mx-auto grid max-w-7xl gap-8 lg:grid-cols-[1.15fr_0.85fr]">
+          <div>
+            <p className="inline-flex items-center gap-2 rounded-full border border-brand-mclaren/25 bg-brand-mclaren/10 px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-mclaren">
+              Hybrid Booking Experience
             </p>
-
-            <div className="mt-8 flex flex-wrap gap-3">
-              <div className="rounded-full border border-white/12 bg-white/8 px-4 py-2 text-sm font-medium text-white/82">
-                {primaryOfferings.length} bookable services
-              </div>
-              <div className="rounded-full border border-white/12 bg-white/8 px-4 py-2 text-sm font-medium text-white/82">
-                Published pricing
-              </div>
-              <div className="rounded-full border border-white/12 bg-white/8 px-4 py-2 text-sm font-medium text-white/82">
-                Request takes under 3 minutes
-              </div>
-            </div>
-
-            <div className="mt-10 grid gap-4 md:grid-cols-3">
-              {bookingSignals.map((signal) => {
-                const Icon = signal.icon;
-                return (
-                  <div
-                    key={signal.title}
-                    className="rounded-[24px] border border-white/10 bg-white/6 p-5 backdrop-blur-md"
-                  >
-                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-brand-mclaren/16 text-brand-mclaren">
-                      <Icon className="h-5 w-5" />
-                    </div>
-                    <p className="mt-4 font-display text-lg font-semibold uppercase text-white">
-                      {signal.title}
-                    </p>
-                    <p className="mt-2 text-sm leading-6 text-white/65">{signal.description}</p>
-                  </div>
-                );
-              })}
-            </div>
+            <h1 className="mt-6 font-display text-5xl font-semibold uppercase leading-[0.95] md:text-7xl">
+              Real slots.
+              <span className="block text-brand-mclaren">Clear next steps.</span>
+            </h1>
+            <p className="mt-5 max-w-2xl text-base leading-7 text-white/72">
+              Instant services check real availability. Assessment-heavy services collect timing preferences, issue details, and optional photos instead of promising a fake appointment.
+            </p>
           </div>
-
-          <div className="relative z-10 animate-fade-in">
-            <div className="booking-sheen overflow-hidden rounded-[30px] border border-white/10 bg-white/8 p-5 shadow-[0_40px_120px_-50px_rgba(0,0,0,0.85)] backdrop-blur-xl">
-              <div className="grid gap-5 md:grid-cols-[1.1fr_0.9fr] lg:grid-cols-1 xl:grid-cols-[1.1fr_0.9fr]">
-                <div className="relative overflow-hidden rounded-[24px] bg-white/5">
-                  {heroService ? (
-                    <>
-                      <img
-                        src={heroService.image}
-                        alt={heroService.title}
-                        className="h-full min-h-[260px] w-full object-cover"
-                      />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/15 to-transparent" />
-                      <div className="absolute inset-x-0 bottom-0 p-5">
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-mclaren">
-                          Live preview
-                        </p>
-                        <p className="mt-2 max-w-xs font-display text-2xl font-semibold uppercase text-white">
-                          {heroService.shortTitle || heroService.title}
-                        </p>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="flex min-h-[260px] items-center justify-center bg-brand-black text-white/70">
-                      Service imagery loading
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex flex-col justify-between">
+          <div className="rounded-[30px] border border-white/10 bg-white/8 p-6">
+            <div className="grid gap-3">
+              {['Vehicle + service', selectedService?.bookingMode === 'request' ? 'Preferred timing + intake' : 'Availability', 'Contact + review'].map((label, index) => (
+                <div key={label} className="flex items-center gap-3 rounded-[20px] border border-white/10 bg-white/6 px-4 py-3">
+                  <div className={`flex h-10 w-10 items-center justify-center rounded-full text-sm font-semibold ${step > index + 1 ? 'bg-brand-mclaren text-white' : step === index + 1 ? 'border border-brand-mclaren text-brand-mclaren' : 'bg-white/8 text-white/50'}`}>
+                    {step > index + 1 ? <CheckCircle2 className="h-4 w-4" /> : `0${index + 1}`}
+                  </div>
                   <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-mclaren">
-                      {selectedService ? 'Selected service' : 'Booking spotlight'}
-                    </p>
-                    <h2 className="mt-3 font-display text-3xl font-semibold uppercase leading-tight text-white">
-                      {selectedService ? selectedService.title : 'Make the car feel new again'}
-                    </h2>
-                    <p className="mt-3 text-sm leading-6 text-white/68">
-                      {selectedService
-                        ? selectedService.description
-                        : 'Browse detailing, tint, protection, and specialty services with published pricing and a more guided booking flow.'}
-                    </p>
-                  </div>
-
-                  <div className="mt-6 space-y-5">
-                    <div className="flex flex-wrap gap-2">
-                      {spotlightFeatures.map((feature) => (
-                        <span
-                          key={feature}
-                          className="rounded-full border border-white/10 bg-white/8 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-white/80"
-                        >
-                          {feature}
-                        </span>
-                      ))}
-                    </div>
-
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <div className="rounded-[20px] border border-white/10 bg-black/25 p-4">
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/50">
-                          Price
-                        </p>
-                        <p className="mt-2 font-display text-3xl font-semibold text-white">
-                          {selectedService?.priceLabel || 'Choose a package'}
-                        </p>
-                      </div>
-                      <div className="rounded-[20px] border border-white/10 bg-black/25 p-4">
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/50">
-                          Duration
-                        </p>
-                        <p className="mt-2 font-display text-3xl font-semibold text-white">
-                          {selectedService?.duration || 'Varies'}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="rounded-[22px] border border-brand-mclaren/20 bg-brand-mclaren/10 p-4 text-sm leading-6 text-white/80">
-                      The page now guides the decision instead of dumping a flat list. Select a
-                      package to reveal the exact snapshot, pricing, and timing.
-                    </div>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/50">Step {index + 1}</p>
+                    <p className="font-medium text-white">{label}</p>
                   </div>
                 </div>
-              </div>
+              ))}
+            </div>
+            <div className="mt-6 rounded-[24px] border border-brand-mclaren/20 bg-brand-mclaren/10 p-4 text-sm leading-6 text-white/80">
+              Current build: {selectedService ? selectedService.title : 'Select a vehicle profile and service to begin.'}
             </div>
           </div>
         </div>
       </section>
-      <section className="relative z-10 px-4 pb-16 pt-8 md:pb-24 md:pt-10">
-        <div className="mx-auto grid max-w-7xl gap-6 lg:grid-cols-[360px_minmax(0,1fr)]">
-          <aside className="h-fit overflow-hidden rounded-[30px] bg-[#0f0f10] text-white shadow-[0_40px_120px_-55px_rgba(0,0,0,0.85)] lg:sticky lg:top-24">
-            <div className="border-b border-white/8 bg-[radial-gradient(circle_at_top,rgba(255,122,0,0.22),transparent_55%)] p-6">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-mclaren">
-                    Booking summary
-                  </p>
-                  <h2 className="mt-3 font-display text-3xl font-semibold uppercase text-white">
-                    Your build
-                  </h2>
-                </div>
-                <div className="rounded-full border border-brand-mclaren/25 bg-brand-mclaren/12 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-mclaren">
-                  Step {step} of 3
-                </div>
-              </div>
 
-              {heroService && (
-                <div className="mt-6 overflow-hidden rounded-[22px] border border-white/8 bg-white/6">
-                  <img
-                    src={heroService.image}
-                    alt={heroService.title}
-                    className="h-40 w-full object-cover"
-                  />
-                  <div className="space-y-2 p-4">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/50">
-                      Current selection
-                    </p>
-                    <p className="font-display text-xl font-semibold uppercase text-white">
-                      {selectedService?.title || 'Choose a service'}
-                    </p>
-                    <p className="text-sm leading-6 text-white/65">
-                      {selectedService?.description || 'Your service snapshot will update here as soon as you pick a package.'}
-                    </p>
+      <section className="px-4 pb-20 pt-8">
+        <div className="mx-auto grid max-w-7xl gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+          <div className="space-y-6 rounded-[34px] border border-black/[0.06] bg-white p-6 shadow-[0_30px_90px_-55px_rgba(0,0,0,0.35)] md:p-8">
+            {step === 1 && (
+              <>
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                  {vehicleOptions.map((option) => (
+                    <button
+                      key={option}
+                      type="button"
+                      onClick={() => {
+                        setVehicleType(option);
+                        clearError('vehicleType');
+                      }}
+                      className={`rounded-[20px] border px-4 py-4 text-left transition ${vehicleType === option ? 'border-brand-mclaren bg-brand-black text-white' : 'border-black/[0.08] bg-[#f7f4ee] text-brand-black'}`}
+                    >
+                      <p className="font-medium">{option}</p>
+                    </button>
+                  ))}
+                </div>
+                {errors.vehicleType && <p className="text-sm text-red-600">{errors.vehicleType}</p>}
+                {errors.service && <p className="text-sm text-red-600">{errors.service}</p>}
+
+                {visibleGroups.map((group) => (
+                  <div key={group.category} className="rounded-[28px] border border-black/[0.06] bg-[#fcfbf8] p-5">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-mclaren">{group.label}</p>
+                    <div className="mt-4 grid gap-4 xl:grid-cols-2">
+                      {group.offerings.map((service) => (
+                        <button
+                          key={service.id}
+                          type="button"
+                          onClick={() => {
+                            setServiceId(service.id);
+                            if (!service.allowsPickupRequest) setPickupRequested(false);
+                            clearError('service');
+                          }}
+                          className={`overflow-hidden rounded-[24px] border text-left transition ${serviceId === service.id ? 'border-brand-mclaren bg-brand-black text-white' : 'border-black/[0.08] bg-white text-brand-black'}`}
+                        >
+                          <div className="grid gap-4 p-5 lg:grid-cols-[1fr_120px]">
+                            <div>
+                              <div className="flex flex-wrap gap-2">
+                                <span className="rounded-full bg-brand-mclaren/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-brand-mclaren">
+                                  {service.bookingMode === 'instant' ? 'Instant booking' : 'Needs review'}
+                                </span>
+                              </div>
+                              <h3 className="mt-4 font-display text-2xl font-semibold uppercase">{service.title}</h3>
+                              <p className={`mt-3 text-sm leading-6 ${serviceId === service.id ? 'text-white/72' : 'text-neutral-600'}`}>{service.description}</p>
+                            </div>
+                            <img src={service.image} alt={service.title} className="h-full min-h-[140px] w-full rounded-[20px] object-cover" />
+                          </div>
+                          <div className={`flex items-center justify-between border-t px-5 py-4 ${serviceId === service.id ? 'border-white/10 bg-white/4' : 'border-black/[0.06] bg-[#f7f4ee]'}`}>
+                            <div>
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-brand-mclaren">{service.priceLabel}</p>
+                              <p className={`mt-1 text-sm ${serviceId === service.id ? 'text-white/70' : 'text-neutral-500'}`}>{service.duration || 'Timing confirmed after review'}</p>
+                            </div>
+                            {serviceId === service.id && <CheckCircle2 className="h-5 w-5 text-brand-mclaren" />}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )}
-            </div>
+                ))}
 
-            <div className="space-y-6 p-6">
-              <div className="space-y-4">
-                {bookingSteps.map((item, index) => {
-                  const stepNumber = index + 1;
-                  const isActive = stepNumber === step;
-                  const isComplete = stepNumber < step;
-                  return (
-                    <div key={item.number} className="flex gap-4">
-                      <div className="flex flex-col items-center">
-                        <div
-                          className={`flex h-10 w-10 items-center justify-center rounded-full border text-sm font-semibold transition-colors ${
-                            isComplete
-                              ? 'border-brand-mclaren bg-brand-mclaren text-white'
-                              : isActive
-                                ? 'border-brand-mclaren bg-brand-mclaren/15 text-brand-mclaren'
-                                : 'border-white/12 bg-white/6 text-white/50'
-                          }`}
-                        >
-                          {isComplete ? <CheckCircle2 className="h-4 w-4" /> : item.number}
-                        </div>
-                        {stepNumber !== bookingSteps.length && (
-                          <div className="mt-2 h-12 w-px bg-white/10" />
-                        )}
-                      </div>
-                      <div className="pt-1">
-                        <p
-                          className={`text-[11px] font-semibold uppercase tracking-[0.16em] ${
-                            isActive || isComplete ? 'text-brand-mclaren' : 'text-white/40'
-                          }`}
-                        >
-                          {item.title}
+                {!!addOnOfferings.length && selectedService && (
+                  <div className="rounded-[28px] border border-black/[0.06] bg-[#fcfbf8] p-5">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-mclaren">Optional add-ons</p>
+                        <p className="mt-2 text-sm text-neutral-600">
+                          Add-ons extend the appointment length automatically when availability is checked.
                         </p>
-                        <p className="mt-2 text-sm leading-6 text-white/68">{item.description}</p>
                       </div>
                     </div>
-                  );
-                })}
-              </div>
+                    <div className="mt-4 grid gap-4 xl:grid-cols-2">
+                      {addOnOfferings.map((addOn) => {
+                        const active = addOnIds.includes(addOn.id);
+                        return (
+                          <button
+                            key={addOn.id}
+                            type="button"
+                            onClick={() =>
+                              setAddOnIds((current) =>
+                                current.includes(addOn.id)
+                                  ? current.filter((item) => item !== addOn.id)
+                                  : [...current, addOn.id]
+                              )
+                            }
+                            className={`rounded-[22px] border px-4 py-4 text-left transition ${active ? 'border-brand-mclaren bg-brand-black text-white' : 'border-black/[0.08] bg-white text-brand-black'}`}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <p className="font-medium">{addOn.title}</p>
+                                <p className={`mt-2 text-sm leading-6 ${active ? 'text-white/70' : 'text-neutral-600'}`}>{addOn.description}</p>
+                              </div>
+                              {active && <CheckCircle2 className="mt-1 h-5 w-5 shrink-0 text-brand-mclaren" />}
+                            </div>
+                            <div className={`mt-4 flex items-center justify-between border-t pt-3 ${active ? 'border-white/10' : 'border-black/[0.06]'}`}>
+                              <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-brand-mclaren">{addOn.priceLabel}</span>
+                              <span className={`text-sm ${active ? 'text-white/68' : 'text-neutral-500'}`}>{addOn.duration || 'Adds time at booking review'}</span>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
 
-              <div className="rounded-[24px] border border-white/8 bg-white/6 p-5">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/50">
-                  Service line-up
-                </p>
-                <p className="mt-3 text-sm leading-6 text-white/78">{serviceSummary}</p>
+                <div className="flex justify-end">
+                  <Button onClick={() => validate(1) && setStep(2)} icon>Continue</Button>
+                </div>
+              </>
+            )}
+            {step === 2 && selectedService && (
+              <>
+                {selectedService.bookingMode === 'instant' ? (
+                  <>
+                    <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-4">
+                      {dateOptions.map((day) => {
+                        const key = dateKey(day, availabilityTimeZone);
+                        return (
+                          <button
+                            key={key}
+                            type="button"
+                            onClick={() => {
+                              setSelectedDate(key);
+                              clearError('selectedDate');
+                            }}
+                            className={`rounded-[20px] border px-4 py-4 text-left ${selectedDate === key ? 'border-brand-mclaren bg-brand-black text-white' : 'border-black/[0.08] bg-[#f7f4ee] text-brand-black'}`}
+                          >
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-brand-mclaren">Open day</p>
+                            <p className="mt-2 font-medium">{dateLabel(day, availabilityTimeZone)}</p>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {errors.selectedDate && <p className="text-sm text-red-600">{errors.selectedDate}</p>}
+
+                    <div className="rounded-[28px] bg-brand-black p-6 text-white">
+                      <div className="flex items-center justify-between gap-4">
+                        <div>
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-mclaren">Live slots</p>
+                          <p className="mt-2 font-display text-2xl font-semibold uppercase">{selectedDate || 'Pick a day first'}</p>
+                        </div>
+                        {loadingSlots && <LoaderCircle className="h-5 w-5 animate-spin text-brand-mclaren" />}
+                      </div>
+                      {availabilityError && <p className="mt-4 text-sm text-red-400">{availabilityError}</p>}
+                      {selectedDate && slots.length ? (
+                        <div className="mt-5 grid gap-3 md:grid-cols-2">
+                          {slots.map((slot) => (
+                            <button
+                              key={slot.startAt}
+                              type="button"
+                              onClick={() => {
+                                setSelectedSlot(slot.startAt);
+                                clearError('selectedSlot');
+                              }}
+                              className={`rounded-[20px] border px-4 py-4 text-left ${selectedSlot === slot.startAt ? 'border-brand-mclaren bg-brand-mclaren/12 text-white' : 'border-white/10 bg-white/6 text-white/80'}`}
+                            >
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-brand-mclaren">Confirmed slot</p>
+                              <p className="mt-2 font-display text-2xl font-semibold uppercase">{slot.label}</p>
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="mt-5 rounded-[22px] border border-dashed border-white/12 bg-white/6 px-4 py-8 text-center text-sm text-white/60">
+                          {selectedDate ? 'No slots are open on that day.' : 'Choose a day to load slots.'}
+                        </div>
+                      )}
+                      {errors.selectedSlot && <p className="mt-4 text-sm text-red-400">{errors.selectedSlot}</p>}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="grid gap-5 md:grid-cols-2">
+                      <Field label="Preferred date" type="date" value={preferredDate} onChange={(value) => { setPreferredDate(value); clearError('preferredDate'); }} error={errors.preferredDate} required />
+                      <Field label="Backup date" type="date" value={backupDate} onChange={setBackupDate} />
+                    </div>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      {['Morning (8 AM - 11 AM)', 'Midday (11 AM - 2 PM)', 'Afternoon (2 PM - 5 PM)', 'Any time that day'].map((window) => (
+                        <button
+                          key={window}
+                          type="button"
+                          onClick={() => {
+                            setTimeWindow(window);
+                            clearError('timeWindow');
+                          }}
+                          className={`rounded-[20px] border px-4 py-4 text-left ${timeWindow === window ? 'border-brand-mclaren bg-brand-black text-white' : 'border-black/[0.08] bg-[#f7f4ee] text-brand-black'}`}
+                        >
+                          {window}
+                        </button>
+                      ))}
+                    </div>
+                    {errors.timeWindow && <p className="text-sm text-red-600">{errors.timeWindow}</p>}
+                    <Field label="Issue details" value={issueDetails} onChange={(value) => { setIssueDetails(value); clearError('issueDetails'); }} placeholder="Tell us what needs to be assessed." textarea error={errors.issueDetails} required />
+                    <Field label="Extra notes" value={notes} onChange={setNotes} placeholder="Anything else we should know?" textarea />
+                    {selectedService.intakeMode === 'assessment' && (
+                      <div className="rounded-[28px] border border-black/[0.06] bg-[#f7f4ee] p-5">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-mclaren">Optional photos</p>
+                            <p className="mt-2 text-sm text-neutral-600">Upload inspection photos for faster review.</p>
+                          </div>
+                          <label className="inline-flex cursor-pointer items-center gap-2 rounded-full bg-brand-black px-5 py-3 text-sm font-semibold uppercase tracking-[0.14em] text-white">
+                            <ImagePlus className="h-4 w-4 text-brand-mclaren" />
+                            {uploading ? 'Uploading...' : 'Add photos'}
+                            <input type="file" accept="image/*" multiple className="hidden" onChange={(event) => void uploadFiles(event.target.files)} />
+                          </label>
+                        </div>
+                        {uploadError && <p className="mt-3 text-sm text-red-600">{uploadError}</p>}
+                        {!!assets.length && (
+                          <div className="mt-4 grid gap-3 md:grid-cols-2">
+                            {assets.map((asset) => (
+                              <div key={asset.path} className="flex items-center justify-between rounded-[18px] border border-black/[0.08] bg-white px-4 py-3">
+                                <div>
+                                  <p className="font-medium text-brand-black">{asset.originalFilename}</p>
+                                  <p className="text-sm text-neutral-500">{Math.round(asset.sizeBytes / 1024)} KB</p>
+                                </div>
+                                <button type="button" onClick={() => setAssets((current) => current.filter((item) => item.path !== asset.path))} className="rounded-full border border-black/[0.08] p-2 text-neutral-500">
+                                  <X className="h-4 w-4" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </>
+                )}
+                <div className="flex items-center justify-between">
+                  <button type="button" onClick={() => setStep(1)} className="text-sm font-medium text-neutral-500">Back</button>
+                  <Button onClick={() => validate(2) && setStep(3)} icon>Continue</Button>
+                </div>
+              </>
+            )}
+
+            {step === 3 && selectedService && (
+              <>
+                <div className="grid gap-5 md:grid-cols-2">
+                  <Field label="Full name" value={contact.fullName} onChange={(value) => { setContact((current) => ({ ...current, fullName: value })); clearError('fullName'); }} placeholder="John Doe" error={errors.fullName} required />
+                  <Field label="Email address" type="email" value={contact.email} onChange={(value) => { setContact((current) => ({ ...current, email: value })); clearError('email'); }} placeholder="you@example.com" error={errors.email} required />
+                  <Field label="Phone number" value={contact.phone} onChange={(value) => { setContact((current) => ({ ...current, phone: value })); clearError('phone'); }} placeholder="+1 (555) 000-0000" error={errors.phone} required />
+                  <Field label="Vehicle year" value={contact.vehicleYear} onChange={(value) => setContact((current) => ({ ...current, vehicleYear: value }))} placeholder="2021" />
+                  <Field label="Vehicle make" value={contact.vehicleMake} onChange={(value) => setContact((current) => ({ ...current, vehicleMake: value }))} placeholder="Tesla" />
+                  <Field label="Vehicle model" value={contact.vehicleModel} onChange={(value) => setContact((current) => ({ ...current, vehicleModel: value }))} placeholder="Model Y" />
+                </div>
+                <Field label="Vehicle description" value={contact.vehicleDescription} onChange={(value) => setContact((current) => ({ ...current, vehicleDescription: value }))} placeholder="Color, trim, access notes, or anything helpful." textarea />
+                {selectedService.allowsPickupRequest && (
+                  <div className="rounded-[28px] bg-brand-black p-6 text-white">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-mclaren">Pickup request</p>
+                        <p className="mt-2 text-sm text-white/68">Pickup and drop-off is reviewed manually, but the address can be collected now.</p>
+                      </div>
+                      <button type="button" onClick={() => setPickupRequested((current) => !current)} className={`rounded-full px-5 py-3 text-sm font-semibold uppercase tracking-[0.14em] ${pickupRequested ? 'bg-brand-mclaren text-white' : 'border border-white/12 bg-white/8 text-white/80'}`}>
+                        {pickupRequested ? 'Pickup requested' : 'Request pickup'}
+                      </button>
+                    </div>
+                    {pickupRequested && (
+                      <div className="mt-5 grid gap-4 md:grid-cols-2">
+                        <Field label="Address line 1" value={pickupAddress.addressLine1} onChange={(value) => { setPickupAddress((current) => ({ ...current, addressLine1: value })); clearError('pickupAddressLine1'); }} placeholder="123 Main St" error={errors.pickupAddressLine1} required />
+                        <Field label="City" value={pickupAddress.city} onChange={(value) => { setPickupAddress((current) => ({ ...current, city: value })); clearError('pickupCity'); }} placeholder="Aurora" error={errors.pickupCity} required />
+                        <Field label="Province" value={pickupAddress.province} onChange={(value) => { setPickupAddress((current) => ({ ...current, province: value })); clearError('pickupProvince'); }} placeholder="Ontario" error={errors.pickupProvince} required />
+                        <Field label="Postal code" value={pickupAddress.postalCode} onChange={(value) => { setPickupAddress((current) => ({ ...current, postalCode: value })); clearError('pickupPostalCode'); }} placeholder="A1A 1A1" error={errors.pickupPostalCode} required />
+                        <Field label="Access notes" value={pickupAddress.notes} onChange={(value) => setPickupAddress((current) => ({ ...current, notes: value }))} placeholder="Gate code, parking instructions" />
+                      </div>
+                    )}
+                  </div>
+                )}
+                {submitError && <p className="text-sm text-red-600">{submitError}</p>}
+                <div className="flex items-center justify-between">
+                  <button type="button" onClick={() => setStep(2)} className="text-sm font-medium text-neutral-500">Back</button>
+                  <Button onClick={submit} disabled={submitting}>
+                    {submitting ? 'Submitting...' : selectedService.bookingMode === 'instant' ? 'Confirm booking' : 'Send request'}
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
+
+          <aside className="h-fit rounded-[34px] bg-brand-black p-6 text-white shadow-[0_40px_120px_-60px_rgba(0,0,0,0.85)] lg:sticky lg:top-24">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-mclaren">Booking summary</p>
+            <h2 className="mt-3 font-display text-3xl font-semibold uppercase">Customer view</h2>
+            <div className="mt-6 space-y-4">
+              <div className="rounded-[24px] border border-white/10 bg-white/6 p-4">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/50">Vehicle profile</p>
+                <p className="mt-2 text-base font-medium">{vehicleType || 'Choose a profile'}</p>
+              </div>
+              <div className="rounded-[24px] border border-white/10 bg-white/6 p-4">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/50">Service</p>
+                <p className="mt-2 text-base font-medium">{selectedService?.title || 'Choose a service'}</p>
+                {selectedService && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <span className="rounded-full border border-white/10 bg-white/8 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-brand-mclaren">
+                      {selectedService.bookingMode === 'instant' ? 'Instant booking' : 'Needs review'}
+                    </span>
+                    <span className="rounded-full border border-white/10 bg-white/8 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white/72">
+                      {selectedService.priceLabel}
+                    </span>
+                  </div>
+                )}
                 {selectedAddOns.length > 0 && (
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    {selectedAddOns.map((service) => (
-                      <span
-                        key={service.id}
-                        className="rounded-full border border-white/10 bg-white/8 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/74"
-                      >
-                        + {service.shortTitle || service.title}
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {selectedAddOns.map((addOn) => (
+                      <span key={addOn.id} className="rounded-full border border-white/10 bg-white/8 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white/72">
+                        {addOn.title}
                       </span>
                     ))}
                   </div>
                 )}
               </div>
-
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
-                <div className="rounded-[24px] border border-white/8 bg-white/6 p-5">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/50">
-                    Date and time
-                  </p>
-                  <p className="mt-3 text-base font-medium text-white">
-                    {selectedDate ? `${formatSelectedDate(selectedDate)}${selectedTime ? ` at ${selectedTime}` : ''}` : 'Still open'}
-                  </p>
-                </div>
-                <div className="rounded-[24px] border border-white/8 bg-white/6 p-5">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/50">
-                    Published pricing
-                  </p>
-                  <p className="mt-3 font-display text-3xl font-semibold text-white">
-                    {selectedService?.priceLabel || '$0'}
-                  </p>
-                </div>
-              </div>
-
-              <div className="rounded-[24px] border border-brand-mclaren/18 bg-brand-mclaren/10 p-5">
-                <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-mclaren">
-                  <Star className="h-4 w-4" />
-                  What happens next
+              <div className="rounded-[24px] border border-white/10 bg-white/6 p-4">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/50">Timing</p>
+                <p className="mt-2 text-base font-medium">
+                  {selectedService?.bookingMode === 'instant'
+                    ? dateTimeLabel(selectedSlot, availabilityTimeZone)
+                    : preferredDate
+                      ? `${preferredDate}${timeWindow ? ` | ${timeWindow}` : ''}`
+                      : 'Still open'}
                 </p>
-                <p className="mt-3 text-sm leading-6 text-white/78">
-                  Submit the request and the team will confirm timing, vehicle fit, and any prep
-                  details before the appointment.
-                </p>
+                {backupDate && <p className="mt-2 text-sm text-white/60">Backup date: {backupDate}</p>}
               </div>
+              <div className="rounded-[24px] border border-white/10 bg-white/6 p-4">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/50">Contact</p>
+                <p className="mt-2 text-base font-medium">{contact.fullName || 'Customer name'}</p>
+                <p className="mt-1 text-sm text-white/60">{contact.email || 'Email address'}</p>
+                <p className="mt-1 text-sm text-white/60">{contact.phone || 'Phone number'}</p>
+              </div>
+            </div>
+            <div className="mt-6 rounded-[24px] border border-brand-mclaren/20 bg-brand-mclaren/10 p-4">
+              <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-mclaren">
+                {selectedService?.bookingMode === 'instant' ? <CalendarDays className="h-4 w-4" /> : <Sparkles className="h-4 w-4" />}
+                What happens next
+              </p>
+              <p className="mt-3 text-sm leading-6 text-white/78">
+                {selectedService?.bookingMode === 'instant'
+                  ? 'The selected slot is rechecked on the server before it is confirmed, then the customer gets a secure manage link.'
+                  : 'The request lands in the lead queue with preferred timing, issue details, pickup preferences, and any uploaded photos.'}
+              </p>
             </div>
           </aside>
-
-          <div className="space-y-6">
-            <div className="overflow-hidden rounded-[28px] border border-black/[0.06] bg-white shadow-[0_30px_90px_-50px_rgba(0,0,0,0.3)]">
-              <div className="border-b border-black/[0.06] bg-[radial-gradient(circle_at_top_right,rgba(255,122,0,0.15),transparent_28%),linear-gradient(180deg,#ffffff,#fbfaf7)] p-6">
-                <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-                  <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-mclaren">
-                      {currentStep.number} / 03
-                    </p>
-                    <h2 className="mt-3 font-display text-3xl font-semibold uppercase text-brand-black md:text-4xl">
-                      {currentStep.title}
-                    </h2>
-                    <p className="mt-3 max-w-2xl text-sm leading-6 text-neutral-600">
-                      {currentStep.description}
-                    </p>
-                  </div>
-
-                  <div className="rounded-full border border-black/[0.08] bg-white/90 px-4 py-2 text-sm font-medium text-neutral-700">
-                    {selectedService ? selectedService.shortTitle || selectedService.title : 'Start with a package'}
-                  </div>
-                </div>
-
-                <div className="mt-6 grid gap-3 md:grid-cols-3">
-                  {bookingSteps.map((item, index) => {
-                    const stepNumber = index + 1;
-                    const active = stepNumber === step;
-                    const complete = stepNumber < step;
-                    return (
-                      <div
-                        key={item.number}
-                        className={`rounded-[24px] border p-4 transition-colors ${
-                          active
-                            ? 'border-brand-mclaren bg-brand-mclaren/[0.07]'
-                            : complete
-                              ? 'border-emerald-200 bg-emerald-50'
-                              : 'border-black/[0.06] bg-white'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between gap-3">
-                          <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
-                            Step {item.number}
-                          </span>
-                          {complete && <CheckCircle2 className="h-4 w-4 text-emerald-600" />}
-                        </div>
-                        <p className="mt-3 font-display text-lg font-semibold uppercase text-brand-black">
-                          {item.title}
-                        </p>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                <div className="mt-5 h-2 overflow-hidden rounded-full bg-black/[0.06]">
-                  <div
-                    className="h-full rounded-full bg-gradient-to-r from-brand-mclaren via-[#ff9b42] to-brand-black transition-all duration-500"
-                    style={{ width: progressWidth }}
-                  />
-                </div>
-              </div>
-
-              <div className="p-6 md:p-8">
-                {submitted ? (
-                  <div className="animate-fade-in overflow-hidden rounded-[32px] bg-brand-black text-center text-white">
-                    <div className="bg-[radial-gradient(circle_at_top,rgba(255,122,0,0.28),transparent_38%)] px-6 py-12">
-                      <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-brand-mclaren text-white shadow-[0_20px_60px_-20px_rgba(255,122,0,0.8)]">
-                        <CheckCircle2 className="h-10 w-10" />
-                      </div>
-                      <h2 className="mt-6 font-display text-4xl font-semibold uppercase text-white">
-                        Booking request sent
-                      </h2>
-                      <p className="mx-auto mt-4 max-w-2xl text-sm leading-7 text-white/72">
-                        Thanks {details.fullName}. We will confirm your appointment for{' '}
-                        {selectedDate ? formatSelectedDate(selectedDate) : 'your requested date'} at{' '}
-                        {selectedTime} shortly by phone or email.
-                      </p>
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    {step === 1 && (
-                      <div className="animate-fade-in">
-                        <div className="flex flex-wrap gap-2">
-                          {groupedPrimaryOfferings.map((group) => (
-                            <span
-                              key={group.category}
-                              className="rounded-full border border-black/[0.08] bg-[#f8f5ef] px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-600"
-                            >
-                              {group.label} · {group.offerings.length}
-                            </span>
-                          ))}
-                        </div>
-
-                        <div className="mt-8 space-y-10">
-                          {groupedPrimaryOfferings.map((group) => (
-                            <div key={group.category}>
-                              <div className="mb-5 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
-                                <div>
-                                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-mclaren">
-                                    {group.label}
-                                  </p>
-                                  <h3 className="mt-2 font-display text-2xl font-semibold uppercase text-brand-black">
-                                    {group.offerings.length} ways to transform the finish
-                                  </h3>
-                                </div>
-                                <p className="max-w-xl text-sm leading-6 text-neutral-600">
-                                  Browse the exact packages in this category and pick the one that
-                                  delivers the result you want most.
-                                </p>
-                              </div>
-
-                              <div className="grid gap-4 xl:grid-cols-2">
-                                {group.offerings.map((service) => {
-                                  const isSelected = selectedService?.id === service.id;
-                                  return (
-                                    <button
-                                      key={service.id}
-                                      type="button"
-                                      onClick={() => setSelectedServiceId(service.id)}
-                                      className={`group relative overflow-hidden rounded-[28px] border text-left transition-all duration-300 ${
-                                        isSelected
-                                          ? 'border-brand-mclaren bg-brand-black text-white shadow-[0_35px_90px_-45px_rgba(255,122,0,0.75)]'
-                                          : 'border-black/[0.08] bg-white hover:-translate-y-1 hover:border-brand-mclaren/35 hover:shadow-[0_30px_80px_-45px_rgba(0,0,0,0.35)]'
-                                      }`}
-                                    >
-                                      <div className="grid h-full gap-0 md:grid-cols-[minmax(0,1fr)_180px]">
-                                        <div className="p-5 md:p-6">
-                                          <div className="flex flex-wrap items-center gap-2">
-                                            <span
-                                              className={`rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] ${
-                                                isSelected
-                                                  ? 'bg-brand-mclaren text-white'
-                                                  : 'bg-brand-mclaren/10 text-brand-mclaren'
-                                              }`}
-                                            >
-                                              {service.shortTitle || group.label}
-                                            </span>
-                                            <span
-                                              className={`rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] ${
-                                                isSelected
-                                                  ? 'border-white/12 bg-white/10 text-white/72'
-                                                  : 'border-black/[0.08] bg-[#f8f5ef] text-neutral-600'
-                                              }`}
-                                            >
-                                              {service.duration || 'Timing varies'}
-                                            </span>
-                                          </div>
-
-                                          <div className="mt-5 flex flex-wrap items-start justify-between gap-4">
-                                            <div className="max-w-xl">
-                                              <h4 className="font-display text-2xl font-semibold uppercase leading-tight">
-                                                {service.title}
-                                              </h4>
-                                              <p
-                                                className={`mt-3 text-sm leading-6 ${
-                                                  isSelected ? 'text-white/70' : 'text-neutral-600'
-                                                }`}
-                                              >
-                                                {service.description}
-                                              </p>
-                                            </div>
-                                            <div className="text-left md:text-right">
-                                              <p
-                                                className={`font-display text-3xl font-semibold ${
-                                                  isSelected ? 'text-white' : 'text-brand-black'
-                                                }`}
-                                              >
-                                                {service.priceLabel}
-                                              </p>
-                                              {service.fixedPriceAmount && (
-                                                <p
-                                                  className={`mt-1 text-xs font-medium uppercase tracking-[0.12em] ${
-                                                    isSelected ? 'text-white/45' : 'text-neutral-500'
-                                                  }`}
-                                                >
-                                                  Published menu price
-                                                </p>
-                                              )}
-                                            </div>
-                                          </div>
-
-                                          <div className="mt-5 flex flex-wrap gap-2">
-                                            {service.features.slice(0, 3).map((feature) => (
-                                              <span
-                                                key={feature}
-                                                className={`rounded-full px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] ${
-                                                  isSelected
-                                                    ? 'bg-white/10 text-white/74'
-                                                    : 'bg-[#f7f4ef] text-neutral-600'
-                                                }`}
-                                              >
-                                                {feature}
-                                              </span>
-                                            ))}
-                                          </div>
-
-                                          {service.notes && (
-                                            <p
-                                              className={`mt-5 text-sm leading-6 ${
-                                                isSelected ? 'text-white/58' : 'text-neutral-500'
-                                              }`}
-                                            >
-                                              {service.notes}
-                                            </p>
-                                          )}
-                                        </div>
-
-                                        <div className="relative min-h-[220px] overflow-hidden md:min-h-full">
-                                          <img
-                                            src={service.image}
-                                            alt={service.title}
-                                            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-                                            loading="lazy"
-                                          />
-                                          <div
-                                            className={`absolute inset-0 ${
-                                              isSelected
-                                                ? 'bg-gradient-to-t from-brand-black/65 to-transparent'
-                                                : 'bg-gradient-to-t from-black/20 to-transparent'
-                                            }`}
-                                          />
-                                          {isSelected && (
-                                            <div className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-brand-mclaren text-white shadow-[0_15px_35px_-15px_rgba(255,122,0,0.8)]">
-                                              <CheckCircle2 className="h-5 w-5" />
-                                            </div>
-                                          )}
-                                        </div>
-                                      </div>
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          ))}
-
-                          {addOnOfferings.length > 0 && (
-                            <div className="overflow-hidden rounded-[30px] bg-[#0f0f10] text-white shadow-[0_30px_90px_-45px_rgba(0,0,0,0.6)]">
-                              <div className="border-b border-white/8 bg-[radial-gradient(circle_at_top_right,rgba(255,122,0,0.2),transparent_40%)] p-6">
-                                <div className="flex flex-wrap items-start justify-between gap-3">
-                                  <div>
-                                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-mclaren">
-                                      Optional upgrades
-                                    </p>
-                                    <h3 className="mt-3 font-display text-2xl font-semibold uppercase text-white">
-                                      Stack on extra impact
-                                    </h3>
-                                    <p className="mt-3 max-w-2xl text-sm leading-6 text-white/68">
-                                      Add-on-only services can be layered onto the main package when
-                                      you want a stronger finish or a more specific fix.
-                                    </p>
-                                  </div>
-                                  {!selectedService && (
-                                    <span className="rounded-full border border-white/10 bg-white/10 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/70">
-                                      Select a primary service first
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-
-                              <div className="grid gap-4 p-6 md:grid-cols-2">
-                                {addOnOfferings.map((service) => {
-                                  const checked = selectedAddOnIds.includes(service.id);
-                                  return (
-                                    <label
-                                      key={service.id}
-                                      className={`flex cursor-pointer gap-4 rounded-[24px] border p-4 transition ${
-                                        checked
-                                          ? 'border-brand-mclaren bg-brand-mclaren/12'
-                                          : 'border-white/10 bg-white/6'
-                                      } ${!selectedService ? 'cursor-not-allowed opacity-55' : 'hover:border-brand-mclaren/30'}`}
-                                    >
-                                      <input
-                                        type="checkbox"
-                                        className="mt-1 h-4 w-4 rounded border-neutral-300 text-brand-mclaren focus:ring-brand-mclaren"
-                                        checked={checked}
-                                        disabled={!selectedService}
-                                        onChange={() => toggleAddOn(service.id)}
-                                      />
-                                      <div className="min-w-0">
-                                        <div className="flex flex-wrap items-center justify-between gap-3">
-                                          <p className="font-display text-xl font-semibold uppercase text-white">
-                                            {service.title}
-                                          </p>
-                                          <p className="text-sm font-semibold text-brand-mclaren">
-                                            {service.priceLabel}
-                                          </p>
-                                        </div>
-                                        <p className="mt-2 text-sm leading-6 text-white/65">
-                                          {service.description}
-                                        </p>
-                                      </div>
-                                    </label>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="mt-10 flex justify-end">
-                          <Button onClick={() => setStep(2)} disabled={!selectedService} icon>
-                            Check availability
-                          </Button>
-                        </div>
-                      </div>
-                    )}
-                    {step === 2 && (
-                      <div className="animate-fade-in">
-                        <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-                          <div className="overflow-hidden rounded-[28px] border border-black/[0.08] bg-[#fcfbf8]">
-                            <div className="border-b border-black/[0.06] bg-white p-5">
-                              <div className="flex items-center justify-between gap-3">
-                                <div>
-                                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-mclaren">
-                                    Calendar
-                                  </p>
-                                  <p className="mt-2 font-display text-2xl font-semibold uppercase text-brand-black">
-                                    Pick the date
-                                  </p>
-                                </div>
-                                <div className="rounded-full border border-black/[0.08] bg-[#f8f5ef] px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-600">
-                                  {selectedService?.duration || 'Timing varies'}
-                                </div>
-                              </div>
-                            </div>
-
-                            <div className="p-5 md:p-6">
-                              <div className="mb-4 flex items-center justify-between">
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1))
-                                  }
-                                  className="rounded-2xl border border-black/[0.08] bg-white p-2.5 text-gray-500 transition-colors hover:border-brand-mclaren/40 hover:text-brand-black"
-                                >
-                                  <ChevronLeft className="h-5 w-5" />
-                                </button>
-                                <p className="font-display text-2xl font-semibold uppercase text-brand-black">
-                                  {formatMonth(currentMonth)}
-                                </p>
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1))
-                                  }
-                                  className="rounded-2xl border border-black/[0.08] bg-white p-2.5 text-gray-500 transition-colors hover:border-brand-mclaren/40 hover:text-brand-black"
-                                >
-                                  <ChevronRight className="h-5 w-5" />
-                                </button>
-                              </div>
-
-                              <div className="grid grid-cols-7 gap-2 text-center text-xs font-semibold uppercase tracking-[0.12em] text-gray-500">
-                                {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, index) => (
-                                  <span key={`${day}-${index}`}>{day}</span>
-                                ))}
-                              </div>
-                              <div className="mt-3 grid grid-cols-7 gap-2">{generateDays()}</div>
-                            </div>
-                          </div>
-
-                          <div className="space-y-5">
-                            <div className="overflow-hidden rounded-[28px] bg-brand-black text-white shadow-[0_30px_90px_-45px_rgba(0,0,0,0.55)]">
-                              <div className="border-b border-white/8 bg-[radial-gradient(circle_at_top_right,rgba(255,122,0,0.2),transparent_42%)] p-5">
-                                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-mclaren">
-                                  Selected package
-                                </p>
-                                <p className="mt-3 font-display text-2xl font-semibold uppercase text-white">
-                                  {selectedService?.title || 'Choose a service'}
-                                </p>
-                                <p className="mt-3 text-sm leading-6 text-white/68">
-                                  {selectedService?.description || 'Return to step one if you need to change the service.'}
-                                </p>
-                              </div>
-
-                              <div className="grid gap-3 p-5 sm:grid-cols-2 xl:grid-cols-1">
-                                <div className="rounded-[22px] border border-white/10 bg-white/6 p-4">
-                                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/50">
-                                    Requested day
-                                  </p>
-                                  <p className="mt-2 text-base font-medium text-white">
-                                    {formatSelectedDate(selectedDate)}
-                                  </p>
-                                </div>
-                                <div className="rounded-[22px] border border-white/10 bg-white/6 p-4">
-                                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/50">
-                                    Requested time
-                                  </p>
-                                  <p className="mt-2 text-base font-medium text-white">
-                                    {selectedTime || 'Choose a slot'}
-                                  </p>
-                                </div>
-                              </div>
-                            </div>
-
-                            <div className="rounded-[28px] border border-black/[0.08] bg-white p-5">
-                              <p className="mb-4 inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500">
-                                <Clock3 className="h-4 w-4 text-brand-mclaren" />
-                                Available slots
-                              </p>
-                              {selectedDate ? (
-                                <div className="custom-scrollbar grid max-h-[360px] gap-3 overflow-y-auto pr-1 sm:grid-cols-2">
-                                  {timeSlots.map((slot) => (
-                                    <button
-                                      key={slot}
-                                      type="button"
-                                      onClick={() => setSelectedTime(slot)}
-                                      className={`rounded-[20px] border px-4 py-4 text-left transition-all duration-300 ${
-                                        selectedTime === slot
-                                          ? 'border-brand-mclaren bg-brand-black text-white shadow-[0_20px_45px_-20px_rgba(255,122,0,0.55)]'
-                                          : 'border-black/[0.08] bg-[#fcfbf8] text-brand-black hover:-translate-y-0.5 hover:border-brand-mclaren/35'
-                                      }`}
-                                    >
-                                      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-brand-mclaren">
-                                        Open slot
-                                      </p>
-                                      <p className="mt-2 font-display text-xl font-semibold uppercase">
-                                        {slot}
-                                      </p>
-                                    </button>
-                                  ))}
-                                </div>
-                              ) : (
-                                <div className="rounded-[22px] border border-dashed border-black/[0.08] bg-[#f8f5ef] px-4 py-8 text-center text-sm text-gray-500">
-                                  Select a date first to unlock time slots.
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="mt-10 flex items-center justify-between">
-                          <button
-                            type="button"
-                            onClick={() => setStep(1)}
-                            className="inline-flex items-center gap-2 text-sm font-medium text-gray-500 transition-colors hover:text-brand-black"
-                          >
-                            <ArrowLeft className="h-4 w-4" /> Back
-                          </button>
-                          <Button onClick={() => setStep(3)} disabled={!selectedDate || !selectedTime}>
-                            Continue
-                          </Button>
-                        </div>
-                      </div>
-                    )}
-                    {step === 3 && (
-                      <div className="animate-fade-in">
-                        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
-                          <div>
-                            <div className="grid gap-5 md:grid-cols-2">
-                              <label className="block rounded-[24px] border border-black/[0.08] bg-[#fcfbf8] p-4">
-                                <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500">
-                                  Full name
-                                </span>
-                                <input
-                                  type="text"
-                                  value={details.fullName}
-                                  onChange={(event) => setDetails((prev) => ({ ...prev, fullName: event.target.value }))}
-                                  className="mt-3 w-full border-0 bg-transparent p-0 text-base text-brand-black outline-none placeholder:text-neutral-400"
-                                  placeholder="John Doe"
-                                />
-                              </label>
-
-                              <label className="block rounded-[24px] border border-black/[0.08] bg-[#fcfbf8] p-4">
-                                <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500">
-                                  Email address
-                                </span>
-                                <input
-                                  type="email"
-                                  value={details.email}
-                                  onChange={(event) => setDetails((prev) => ({ ...prev, email: event.target.value }))}
-                                  className="mt-3 w-full border-0 bg-transparent p-0 text-base text-brand-black outline-none placeholder:text-neutral-400"
-                                  placeholder="you@example.com"
-                                />
-                              </label>
-
-                              <label className="block rounded-[24px] border border-black/[0.08] bg-[#fcfbf8] p-4">
-                                <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500">
-                                  Phone number
-                                </span>
-                                <input
-                                  type="tel"
-                                  value={details.phone}
-                                  onChange={(event) => setDetails((prev) => ({ ...prev, phone: event.target.value }))}
-                                  className="mt-3 w-full border-0 bg-transparent p-0 text-base text-brand-black outline-none placeholder:text-neutral-400"
-                                  placeholder="+1 (555) 000-0000"
-                                />
-                              </label>
-
-                              <label className="block rounded-[24px] border border-black/[0.08] bg-[#fcfbf8] p-4">
-                                <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500">
-                                  Vehicle details
-                                </span>
-                                <input
-                                  type="text"
-                                  value={details.vehicle}
-                                  onChange={(event) => setDetails((prev) => ({ ...prev, vehicle: event.target.value }))}
-                                  className="mt-3 w-full border-0 bg-transparent p-0 text-base text-brand-black outline-none placeholder:text-neutral-400"
-                                  placeholder="Year, Make, Model"
-                                />
-                              </label>
-                            </div>
-
-                            <label className="mt-5 block rounded-[24px] border border-black/[0.08] bg-[#fcfbf8] p-4">
-                              <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500">
-                                Special requests
-                              </span>
-                              <textarea
-                                value={details.notes}
-                                onChange={(event) => setDetails((prev) => ({ ...prev, notes: event.target.value }))}
-                                className="mt-3 h-32 w-full resize-none border-0 bg-transparent p-0 text-base text-brand-black outline-none placeholder:text-neutral-400"
-                                placeholder="Tell us about stains, paint concerns, pet hair, odors, coating goals, or anything else we should know."
-                              />
-                            </label>
-
-                            <div className="mt-10 flex items-center justify-between">
-                              <button
-                                type="button"
-                                onClick={() => setStep(2)}
-                                className="inline-flex items-center gap-2 text-sm font-medium text-gray-500 transition-colors hover:text-brand-black"
-                              >
-                                <ArrowLeft className="h-4 w-4" /> Back
-                              </button>
-                              <Button onClick={handleConfirm} disabled={submitting}>
-                                {submitting ? 'Submitting...' : 'Confirm booking'}
-                              </Button>
-                            </div>
-                            {submitError && <p className="mt-4 text-sm text-red-600">{submitError}</p>}
-                          </div>
-
-                          <div className="overflow-hidden rounded-[28px] bg-brand-black text-white shadow-[0_30px_90px_-45px_rgba(0,0,0,0.55)]">
-                            <div className="border-b border-white/8 bg-[radial-gradient(circle_at_top,rgba(255,122,0,0.22),transparent_45%)] p-5">
-                              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-mclaren">
-                                Final check
-                              </p>
-                              <p className="mt-3 font-display text-2xl font-semibold uppercase text-white">
-                                Ready to submit
-                              </p>
-                              <p className="mt-3 text-sm leading-6 text-white/68">
-                                Make sure the contact details are correct so the team can confirm the
-                                appointment quickly.
-                              </p>
-                            </div>
-
-                            <div className="space-y-4 p-5">
-                              <div className="rounded-[22px] border border-white/10 bg-white/6 p-4">
-                                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/50">
-                                  Service
-                                </p>
-                                <p className="mt-2 text-base font-medium text-white">
-                                  {selectedService?.title || 'Not selected yet'}
-                                </p>
-                              </div>
-
-                              <div className="rounded-[22px] border border-white/10 bg-white/6 p-4">
-                                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/50">
-                                  Appointment
-                                </p>
-                                <p className="mt-2 text-base font-medium text-white">
-                                  {selectedDate ? formatSelectedDate(selectedDate) : 'Choose a date'}
-                                </p>
-                                <p className="mt-1 text-sm text-white/60">
-                                  {selectedTime || 'Choose a time slot'}
-                                </p>
-                              </div>
-
-                              <div className="rounded-[22px] border border-white/10 bg-white/6 p-4">
-                                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/50">
-                                  Contact
-                                </p>
-                                <p className="mt-2 text-base font-medium text-white">
-                                  {details.fullName || 'Your name'}
-                                </p>
-                                <p className="mt-1 text-sm text-white/60">
-                                  {details.email || 'your@email.com'}
-                                </p>
-                                <p className="mt-1 text-sm text-white/60">
-                                  {details.phone || '+1 phone number'}
-                                </p>
-                              </div>
-
-                              <div className="rounded-[22px] border border-brand-mclaren/18 bg-brand-mclaren/10 p-4">
-                                <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-mclaren">
-                                  <Car className="h-4 w-4" />
-                                  Vehicle notes help
-                                </p>
-                                <p className="mt-3 text-sm leading-6 text-white/78">
-                                  Model, size, stains, scratches, pet hair, tint goals, or coating
-                                  plans all help the team prepare accurately.
-                                </p>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
         </div>
       </section>
       <ServiceNotice />

@@ -6,7 +6,12 @@ import { writeAuditLog } from './_lib/audit';
 import { createInAppNotification } from './_lib/inAppNotifications';
 import { isFeatureEnabled } from './_lib/featureFlags';
 import { mapJobToUiStatus, mapJobUiStatusToInternal } from './_lib/dashboardStatus';
+import { getBookingServiceSelection, getBookingSettings, getScheduledEndAt } from './_lib/booking';
 import { normalizeServiceAddonIds, normalizeServiceCatalogId } from './_lib/serviceSelection';
+
+const isMissingColumnError = (message: string, column: string) =>
+  message.includes(`Could not find the '${column}' column`) ||
+  new RegExp(`column\\s+(?:[a-z0-9_]+\\.)?${column}\\s+does not exist`, 'i').test(message);
 
 const normalizePagination = (req: VercelRequest) => {
   const rawPage = Number(req.query.page || 1);
@@ -20,6 +25,43 @@ const normalizePagination = (req: VercelRequest) => {
   const offset = (page - 1) * pageSize;
   const to = offset + pageSize - 1;
   return { page, pageSize, offset, to };
+};
+
+const readLegacyPaymentStatus = (details: unknown): 'paid' | 'unpaid' | null => {
+  if (!details || typeof details !== 'object') return null;
+  const record = details as Record<string, unknown>;
+  const paymentStatus = record.payment_status;
+  if (!paymentStatus || typeof paymentStatus !== 'object') return null;
+  const nextValue = (paymentStatus as Record<string, unknown>).to;
+  return nextValue === 'paid' || nextValue === 'unpaid' ? nextValue : null;
+};
+
+const loadPaymentStatusOverrides = async (
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  jobIds: string[]
+) => {
+  if (!jobIds.length) return new Map<string, 'paid' | 'unpaid'>();
+
+  const { data, error } = await supabase
+    .from('audit_logs')
+    .select('entity_id, details, created_at')
+    .eq('module', 'services')
+    .eq('entity_type', 'service_job')
+    .in('entity_id', jobIds)
+    .order('created_at', { ascending: false });
+
+  if (error || !data?.length) return new Map<string, 'paid' | 'unpaid'>();
+
+  const overrides = new Map<string, 'paid' | 'unpaid'>();
+  for (const row of data) {
+    if (overrides.has(row.entity_id)) continue;
+    const paymentStatus = readLegacyPaymentStatus(row.details);
+    if (paymentStatus) {
+      overrides.set(row.entity_id, paymentStatus);
+    }
+  }
+
+  return overrides;
 };
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -73,9 +115,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const total = count || 0;
       const totalPages = total > 0 ? Math.ceil(total / pageSize) : 1;
 
+      const paymentStatusOverrides = await loadPaymentStatusOverrides(
+        supabase,
+        (data || []).map((job) => job.id).filter(Boolean)
+      );
+
       return res.status(200).json({
         serviceJobs: (data || []).map((job) => ({
           ...job,
+          payment_status:
+            (job.payment_status === 'paid' || job.payment_status === 'unpaid'
+              ? job.payment_status
+              : null) ||
+            paymentStatusOverrides.get(job.id) ||
+            'unpaid',
           ui_status: mapJobToUiStatus(job.status),
         })),
         pagination: { page, pageSize, total, totalPages },
@@ -100,12 +153,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         vehicleYear?: number | null;
         estimatedAmount?: number | null;
         paymentStatus?: 'unpaid' | 'paid' | null;
+        bookingSource?: string | null;
+        bookingReference?: string | null;
+        pickupRequested?: boolean | null;
+        pickupAddress?: Record<string, unknown> | null;
       };
       if (!body.clientName || !body.serviceType) {
         return badRequest(res, 'clientName and serviceType are required');
       }
       const serviceCatalogId = normalizeServiceCatalogId(body.serviceCatalogId);
       const serviceAddonIds = normalizeServiceAddonIds(body.serviceAddonIds);
+      const bookingSettings = await getBookingSettings(supabase);
+      const selection = serviceCatalogId
+        ? await getBookingServiceSelection(serviceCatalogId, serviceAddonIds)
+        : null;
+      const scheduledEndAt = getScheduledEndAt(
+        body.scheduledAt || null,
+        selection?.primaryService || null,
+        selection?.addOns || [],
+        bookingSettings
+      );
 
       const { data, error } = await supabase
         .from('service_jobs')
@@ -118,6 +185,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           service_addon_ids: serviceAddonIds.length ? serviceAddonIds : null,
           status: mapJobUiStatusToInternal(body.status || 'scheduled')[0] || 'booked',
           scheduled_at: body.scheduledAt || null,
+          scheduled_end_at: scheduledEndAt,
           assignee_id: body.assigneeId || null,
           notes: body.notes || null,
           vehicle_make: body.vehicleMake || null,
@@ -125,7 +193,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           vehicle_year: typeof body.vehicleYear === 'number' ? body.vehicleYear : null,
           estimated_amount: typeof body.estimatedAmount === 'number' ? body.estimatedAmount : 0,
           payment_status: body.paymentStatus || 'unpaid',
+          booking_source: body.bookingSource || 'ops',
+          booking_reference: body.bookingReference || null,
+          pickup_requested: Boolean(body.pickupRequested),
+          pickup_address: body.pickupAddress || null,
           completed_at: body.status === 'completed' ? new Date().toISOString() : null,
+          updated_at: new Date().toISOString(),
         })
         .select('*')
         .single();
@@ -191,6 +264,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         vehicleYear?: number | null;
         estimatedAmount?: number | null;
         paymentStatus?: 'unpaid' | 'paid' | null;
+        bookingSource?: string | null;
+        bookingReference?: string | null;
+        pickupRequested?: boolean | null;
+        pickupAddress?: Record<string, unknown> | null;
       };
       if (!body.id) return badRequest(res, 'id is required');
 
@@ -225,15 +302,57 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (typeof body.vehicleYear !== 'undefined') updates.vehicle_year = body.vehicleYear || null;
       if (typeof body.estimatedAmount === 'number') updates.estimated_amount = body.estimatedAmount;
       if (typeof body.paymentStatus !== 'undefined') updates.payment_status = body.paymentStatus || 'unpaid';
+      if (typeof body.bookingSource !== 'undefined') updates.booking_source = body.bookingSource || null;
+      if (typeof body.bookingReference !== 'undefined') updates.booking_reference = body.bookingReference || null;
+      if (typeof body.pickupRequested !== 'undefined') updates.pickup_requested = Boolean(body.pickupRequested);
+      if (typeof body.pickupAddress !== 'undefined') updates.pickup_address = body.pickupAddress || null;
+
+      const serviceCatalogIdForEnd =
+        typeof body.serviceCatalogId !== 'undefined'
+          ? normalizeServiceCatalogId(body.serviceCatalogId)
+          : previousJob.service_catalog_id;
+      const serviceAddonIdsForEnd =
+        typeof body.serviceAddonIds !== 'undefined'
+          ? normalizeServiceAddonIds(body.serviceAddonIds)
+          : previousJob.service_addon_ids || [];
+      const scheduledAtForEnd =
+        typeof body.scheduledAt !== 'undefined' ? body.scheduledAt || null : previousJob.scheduled_at;
+      if (
+        typeof body.scheduledAt !== 'undefined' ||
+        typeof body.serviceCatalogId !== 'undefined' ||
+        typeof body.serviceAddonIds !== 'undefined'
+      ) {
+        const bookingSettings = await getBookingSettings(supabase);
+        const selection = serviceCatalogIdForEnd
+          ? await getBookingServiceSelection(serviceCatalogIdForEnd, serviceAddonIdsForEnd)
+          : null;
+        updates.scheduled_end_at = getScheduledEndAt(
+          scheduledAtForEnd,
+          selection?.primaryService || null,
+          selection?.addOns || [],
+          bookingSettings
+        );
+      }
+      updates.updated_at = new Date().toISOString();
 
       if (!Object.keys(updates).length) return badRequest(res, 'No updates provided');
 
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from('service_jobs')
         .update(updates)
         .eq('id', body.id)
         .select('*')
         .single();
+
+      if (error && isMissingColumnError(error.message, 'payment_status') && 'payment_status' in updates) {
+        const { payment_status, ...legacyUpdates } = updates;
+        ({ data, error } = await supabase
+          .from('service_jobs')
+          .update(legacyUpdates)
+          .eq('id', body.id)
+          .select('*')
+          .single());
+      }
       if (error) throw new Error(error.message);
 
       const metadata: Record<string, unknown> = {};
@@ -284,6 +403,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({
         serviceJob: {
           ...data,
+          payment_status:
+            (typeof body.paymentStatus !== 'undefined' ? body.paymentStatus : data.payment_status) || 'unpaid',
           ui_status: mapJobToUiStatus(data.status),
         },
       });
