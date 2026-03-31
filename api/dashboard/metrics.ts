@@ -4,9 +4,11 @@ import { getSupabaseAdmin } from '../_lib/supabaseAdmin';
 import { forbidden, methodNotAllowed, serverError, unauthorized } from '../_lib/http';
 import { isFeatureEnabled } from '../_lib/featureFlags';
 import { getCmsPageData } from '../_lib/cms';
+import { getBookingSettings } from '../_lib/booking';
 import { adaptServicesContent } from '../../lib/contentAdapter';
 import { defaultServicesPageContent } from '../../lib/cmsDefaults';
 import { estimateServiceAmount } from '../../lib/serviceCatalog';
+import { getTimeZoneDateKey, localDateKeyToUtcRange } from '../../lib/timeZone';
 
 const isMissingTableError = (message: string, table: string) =>
   message.includes(`Could not find the table 'public.${table}'`) ||
@@ -39,10 +41,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const opsEnabled = await isFeatureEnabled(supabase, 'ops_v1_enabled', true);
     if (!opsEnabled) return forbidden(res);
 
-    const startOfToday = new Date();
-    startOfToday.setHours(0, 0, 0, 0);
-    const endOfToday = new Date(startOfToday);
-    endOfToday.setDate(endOfToday.getDate() + 1);
+    const bookingSettings = await getBookingSettings(supabase);
+    const todayKey = getTimeZoneDateKey(new Date(), bookingSettings.timeZone);
+    const { start: startOfToday, end: endOfToday } = localDateKeyToUtcRange(todayKey, bookingSettings.timeZone);
 
     const [
       servicesPage,

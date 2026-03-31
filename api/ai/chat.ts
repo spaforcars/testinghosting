@@ -3,8 +3,10 @@ import { getAuthContext, hasPermission } from '../_lib/auth';
 import { getSupabaseAdmin } from '../_lib/supabaseAdmin';
 import { badRequest, forbidden, methodNotAllowed, serverError, unauthorized } from '../_lib/http';
 import { isFeatureEnabled } from '../_lib/featureFlags';
-import { getServicesContentForBooking } from '../_lib/booking';
+import { getBookingSettings, getServicesContentForBooking } from '../_lib/booking';
 import { getAiSettings, type AiSettings } from '../_lib/ai';
+import { calendarBlockSourceLabel, type CalendarBlockSource } from '../_lib/calendarBlocks';
+import { maybeParseCalendarBlockIntent } from '../_lib/calendarBlockIntent';
 import { estimateServiceAmount } from '../../lib/serviceCatalog';
 
 type ChatRole = 'user' | 'assistant';
@@ -44,18 +46,46 @@ type RetrievalDocument = {
 
 type OpsChatResponse = {
   answer: string;
+  sections: Array<{
+    title: string;
+    items: string[];
+  }>;
   supportingFacts: string[];
   followUpQuestions: string[];
   mode: 'ai' | 'fallback';
   warning?: string | null;
+  actionProposal?: {
+    type: 'calendar_block';
+    status: 'pending_confirmation';
+    title: string;
+    startAt: string;
+    endAt: string;
+    source: CalendarBlockSource;
+    notes?: string | null;
+  } | null;
 };
 
 const chatAnswerJsonSchema = {
   type: 'object',
   additionalProperties: false,
-  required: ['answer', 'supportingFacts', 'followUpQuestions'],
+  required: ['answer', 'sections', 'supportingFacts', 'followUpQuestions'],
   properties: {
     answer: { type: 'string' },
+    sections: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['title', 'items'],
+        properties: {
+          title: { type: 'string' },
+          items: {
+            type: 'array',
+            items: { type: 'string' },
+          },
+        },
+      },
+    },
     supportingFacts: {
       type: 'array',
       items: { type: 'string' },
@@ -325,14 +355,11 @@ const buildFallbackAnswer = (
 ): OpsChatResponse => {
   const metrics = toRecord(snapshot.metrics);
   const pendingJobs = Array.isArray(snapshot.pendingJobs) ? snapshot.pendingJobs.length : 0;
-  const paidJobs = Array.isArray(snapshot.paidJobs) ? snapshot.paidJobs.length : 0;
-  const unpaidJobs = Array.isArray(snapshot.unpaidJobs) ? snapshot.unpaidJobs.length : 0;
   const noteMatches = Array.isArray(snapshot.noteMatches) ? snapshot.noteMatches : [];
   const retrievedContext = Array.isArray(snapshot.retrievedContext) ? snapshot.retrievedContext : [];
 
   const answerParts = [
     `${pendingJobs} pending scheduled job${pendingJobs === 1 ? '' : 's'} are currently open.`,
-    `${paidJobs} job${paidJobs === 1 ? '' : 's'} are marked paid and ${unpaidJobs} remain unpaid.`,
     `Expected revenue today is ${String(metrics.expectedRevenueToday || 0)} and total expected revenue is ${String(metrics.expectedRevenueTotal || 0)}.`,
   ];
 
@@ -340,12 +367,32 @@ const buildFallbackAnswer = (
     answerParts.push(`I found ${noteMatches.length} note match${noteMatches.length === 1 ? '' : 'es'} related to your question.`);
   }
 
+  const sections = [
+    {
+      title: 'Current Snapshot',
+      items: [
+        `${pendingJobs} pending scheduled job${pendingJobs === 1 ? '' : 's'} are currently open.`,
+        `Expected revenue today is ${String(metrics.expectedRevenueToday || 0)} and total expected revenue is ${String(metrics.expectedRevenueTotal || 0)}.`,
+      ],
+    },
+    ...(noteMatches.length
+      ? [
+          {
+            title: 'Relevant Notes',
+            items: noteMatches.slice(0, 3).map((item) => {
+              const record = toRecord(item);
+              return `${readString(record.customerName)}: ${readString(record.summary) || 'Note found in related context.'}`;
+            }),
+          },
+        ]
+      : []),
+  ];
+
   return {
     answer: answerParts.join(' '),
+    sections,
     supportingFacts: [
       `${pendingJobs} pending jobs`,
-      `${paidJobs} paid jobs`,
-      `${unpaidJobs} unpaid jobs`,
       `Expected total revenue: ${String(metrics.expectedRevenueTotal || 0)}`,
       ...retrievedContext
         .slice(0, 2)
@@ -356,15 +403,85 @@ const buildFallbackAnswer = (
       ...(warning ? [warning] : []),
     ],
     followUpQuestions: [
-      'Which unpaid jobs are scheduled next?',
       'Show me customer notes related to pet hair or smoke odor.',
       'Who requested pickup or drop-off service recently?',
-      'Who has already paid and what service did they book?',
+      'Which bookings are scheduled next?',
+      'Give me a prep brief for the next 3 bookings.',
     ],
     mode: 'fallback',
     warning: warning || null,
+    actionProposal: null,
   };
 };
+
+const buildCalendarBlockProposalResponse = (
+  proposal: NonNullable<OpsChatResponse['actionProposal']>,
+  timeZone: string
+): OpsChatResponse => {
+  const startLabel = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    weekday: 'long',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  }).format(new Date(proposal.startAt));
+  const endLabel = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  }).format(new Date(proposal.endAt));
+
+  return {
+    answer: `I parsed a ${calendarBlockSourceLabel(proposal.source).toLowerCase()} from ${startLabel} to ${endLabel}. Confirm it and I will save it to the calendar.`,
+    sections: [
+      {
+        title: 'Proposed Block',
+        items: [
+          `Type: ${calendarBlockSourceLabel(proposal.source)}`,
+          `Start: ${startLabel}`,
+          `End: ${endLabel}`,
+        ],
+      },
+      {
+        title: 'Next Step',
+        items: ['Use Confirm to save this blocked time, or Cancel if you want to discard it.'],
+      },
+    ],
+    supportingFacts: [`Calendar timezone: ${timeZone}`],
+    followUpQuestions: [
+      'Block tomorrow 9 AM to 12 PM for walk-ins.',
+      'Block next Monday 1 PM to 4 PM for doorstep work.',
+    ],
+    mode: 'fallback',
+    warning: null,
+    actionProposal: proposal,
+  };
+};
+
+const buildCalendarBlockClarificationResponse = (timeZone: string): OpsChatResponse => ({
+  answer: `I can create a calendar block from chat, but I need a date and a time range I can parse in ${timeZone}.`,
+  sections: [
+    {
+      title: 'Try one of these',
+      items: [
+        'Block tomorrow 2 PM to 5 PM for walk-ins.',
+        'Block Monday 9:30 AM to 11:30 AM.',
+        'Block 2026-03-24 from 1 PM to 4 PM for doorstep work.',
+      ],
+    },
+  ],
+  supportingFacts: [`Calendar timezone: ${timeZone}`],
+  followUpQuestions: [
+    'Block tomorrow 2 PM to 5 PM for walk-ins.',
+    'Block next Tuesday 10 AM to 1 PM.',
+  ],
+  mode: 'fallback',
+  warning: null,
+  actionProposal: null,
+});
 
 const scoreRetrievalDocument = (
   document: Omit<RetrievalDocument, 'score'>,
@@ -420,6 +537,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const question = normalizeQuestion(readString(req.body?.question));
     if (!question) return badRequest(res, 'question is required');
+    const bookingSettings = await getBookingSettings(supabase);
+    const lowerQuestion = question.toLowerCase();
+    if (/(block|hold|reserve|close off|close-off|make unavailable)/.test(lowerQuestion)) {
+      const parsedBlockIntent = maybeParseCalendarBlockIntent(question, bookingSettings.timeZone);
+      if (parsedBlockIntent) {
+        return res.status(200).json(
+          buildCalendarBlockProposalResponse(
+            {
+              type: 'calendar_block',
+              status: 'pending_confirmation',
+              title: parsedBlockIntent.title,
+              startAt: parsedBlockIntent.startAt,
+              endAt: parsedBlockIntent.endAt,
+              source: parsedBlockIntent.source,
+              notes: parsedBlockIntent.notes || null,
+            },
+            bookingSettings.timeZone
+          )
+        );
+      }
+
+      return res.status(200).json(buildCalendarBlockClarificationResponse(bookingSettings.timeZone));
+    }
 
     const history = Array.isArray(req.body?.history)
       ? (req.body.history as ChatMessageInput[])
@@ -867,7 +1007,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const requestBody: Record<string, unknown> = {
       model: settings.model,
       instructions:
-        'You are an internal operations copilot for a premium car detailing business. Answer only from the supplied source snapshot and recent conversation. Prioritize retrievedContext when the question is about notes, messages, pickup requests, or fuzzy customer details. Do not invent customers, payments, notes, counts, or revenue. If the snapshot is insufficient, say exactly what is missing. Keep answers concise, operational, and factual.',
+        'You are an internal operations copilot for a premium car detailing business. Answer only from the supplied source snapshot and recent conversation. Prioritize retrievedContext when the question is about notes, messages, pickup requests, or fuzzy customer details. Do not invent customers, notes, counts, or revenue. Do not mention paid or unpaid status unless the user explicitly asks about payments. If the snapshot is insufficient, say exactly what is missing. Keep answers concise, operational, and factual. Return a short summary answer plus 1 to 3 structured sections with short bullet items. Each item should be a single sentence and easy to scan in a dashboard card. Always include supportingFacts and followUpQuestions as arrays, even when empty.',
       input: `Conversation history:\n${JSON.stringify(history, null, 2)}\n\nCurrent question:\n${question}\n\nSource snapshot:\n${JSON.stringify(sourceSnapshot, null, 2)}`,
       text: {
         format: {
@@ -913,11 +1053,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       const parsed = JSON.parse(outputText) as Record<string, unknown>;
       const answer = readString(parsed.answer);
+      const sections = Array.isArray(parsed.sections)
+        ? parsed.sections
+            .map((item) => {
+              const record = typeof item === 'object' && item !== null ? (item as Record<string, unknown>) : {};
+              return {
+                title: readString(record.title) || 'Details',
+                items: readStringArray(record.items).slice(0, 4),
+              };
+            })
+            .filter((section) => section.items.length)
+            .slice(0, 3)
+        : [];
       const supportingFacts = readStringArray(parsed.supportingFacts).slice(0, 6);
       const followUpQuestions = readStringArray(parsed.followUpQuestions).slice(0, 4);
 
       return res.status(200).json({
         answer: answer || buildFallbackAnswer(question, sourceSnapshot).answer,
+        sections,
         supportingFacts,
         followUpQuestions,
         mode: 'ai',
@@ -930,3 +1083,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return serverError(res, error);
   }
 }
+
+
+
+
+
+
+

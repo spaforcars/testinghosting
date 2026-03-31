@@ -1,5 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import {
+  BOOKING_CAPACITY_CONFLICT_MESSAGE,
+  checkInstantBookingCapacity,
   getBookingSettings,
   getScheduledEndAt,
   hashManageToken,
@@ -124,6 +126,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return badRequest(res, 'scheduledAt must be a valid ISO timestamp');
       }
 
+      const serviceId = booking.primaryService?.id || booking.enquiry.service_catalog_id;
+      if (!serviceId) {
+        return badRequest(res, 'This booking cannot be rescheduled online');
+      }
+
+      const capacity = await checkInstantBookingCapacity(supabase, {
+        serviceId,
+        addOnIds: booking.enquiry.service_addon_ids || [],
+        scheduledAt: requestedSlot.toISOString(),
+        excludeJobId: booking.serviceJob.id,
+      });
+
+      if (!capacity.isAvailable) {
+        return res.status(409).json({ error: BOOKING_CAPACITY_CONFLICT_MESSAGE });
+      }
+
       const dateKey = new Intl.DateTimeFormat('en-CA', {
         timeZone: settings.timeZone,
         year: 'numeric',
@@ -134,18 +152,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .replaceAll('/', '-');
 
       const availability = await listAvailableSlots(supabase, {
-        serviceId: booking.primaryService?.id || booking.enquiry.service_catalog_id,
+        serviceId,
         addOnIds: booking.enquiry.service_addon_ids || [],
         dateKey,
       });
 
-      const slot = availability.slots.find((item) => item.startAt === requestedSlot.toISOString());
+      const slot = availability.slots.find(
+        (item) => item.startAt === requestedSlot.toISOString() && item.status === 'available'
+      );
       if (!slot) {
-        return res.status(409).json({ error: 'That appointment slot is no longer available' });
+        return res.status(409).json({ error: BOOKING_CAPACITY_CONFLICT_MESSAGE });
       }
 
       const scheduledEndAt = getScheduledEndAt(
-        slot.startAt,
+        capacity.slot.startAt,
         booking.primaryService,
         booking.addOns,
         settings
@@ -154,7 +174,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ...(booking.enquiry.metadata || {}),
         timing: {
           ...(booking.enquiry.metadata?.timing || {}),
-          scheduledAt: slot.startAt,
+          scheduledAt: capacity.slot.startAt,
           timeZone: settings.timeZone,
         },
       };
@@ -170,7 +190,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       await supabase
         .from('service_jobs')
         .update({
-          scheduled_at: slot.startAt,
+          scheduled_at: capacity.slot.startAt,
           scheduled_end_at: scheduledEndAt,
           updated_at: new Date().toISOString(),
         })
@@ -184,7 +204,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         note: 'Customer rescheduled booking via manage link',
         metadata: {
           bookingReference: booking.enquiry.booking_reference,
-          scheduledAt: slot.startAt,
+          scheduledAt: capacity.slot.startAt,
         },
         created_by: null,
       });
@@ -194,7 +214,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         customerName: booking.enquiry.name,
         bookingReference: booking.enquiry.booking_reference,
         serviceName: booking.enquiry.service_type,
-        scheduledAt: slot.startAt,
+        scheduledAt: capacity.slot.startAt,
         timeZone: settings.timeZone,
         manageLink: `${process.env.APP_BASE_URL || 'http://localhost:3001'}/#/booking/manage/${encodeURIComponent(reference)}?token=${encodeURIComponent(token)}`,
         pickupRequested: Boolean(booking.serviceJob.pickup_requested),
@@ -202,7 +222,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       return res.status(200).json({
         status: 'confirmed',
-        scheduledAt: slot.startAt,
+        scheduledAt: capacity.slot.startAt,
         manageUrl: `${process.env.APP_BASE_URL || 'http://localhost:3001'}/#/booking/manage/${encodeURIComponent(reference)}?token=${encodeURIComponent(token)}`,
       });
     }

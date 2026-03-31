@@ -233,6 +233,8 @@ export interface SiteSettingsContent {
   serviceNotice: string;
   contactEmail: string;
   contactPhone: string;
+  secondaryContactPhone: string;
+  contactHours: string;
   topBarHours: string;
   address: string;
   instagramUrl: string;

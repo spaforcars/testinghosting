@@ -50,11 +50,11 @@ const Home: React.FC = () => {
         <img
           src={content.heroImage}
           alt="Hero Car"
-          className="absolute inset-0 w-full h-full object-cover scale-105"
+          className="absolute inset-0 w-full h-full object-cover scale-105 brightness-110"
         />
         {/* Gradient overlays */}
-        <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/50 to-black/20" />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-r from-black/55 via-black/35 to-black/5" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
 
         {/* Hero content — bottom-left */}
         <div className="absolute bottom-16 left-0 right-0 px-4">
@@ -100,7 +100,7 @@ const Home: React.FC = () => {
             <h2 className="font-display text-3xl md:text-5xl font-bold uppercase text-white">
               {content.whyTitle}
             </h2>
-            <p className="font-serif italic text-xl text-neutral-400 text-center mt-4 max-w-2xl mx-auto">
+            <p className="mt-4 max-w-2xl mx-auto text-center font-sans text-lg leading-relaxed text-neutral-400 md:text-xl">
               {content.whyBody}
             </p>
           </div>

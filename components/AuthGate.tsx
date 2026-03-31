@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import Button from './Button';
+import { clearSessionTokenCookie, setSessionTokenCookie } from '../lib/sessionTokenCookie';
 import { getSupabaseBrowserClient } from '../lib/supabaseBrowser';
 import { hasSupabaseClientEnv } from '../lib/env';
 
@@ -38,6 +39,11 @@ const AuthGate: React.FC<AuthGateProps> = ({ title, children }) => {
 
       if (mounted) {
         setIsAuthenticated(Boolean(session?.access_token));
+        if (session?.access_token) {
+          setSessionTokenCookie(session.access_token, session.expires_at);
+        } else {
+          clearSessionTokenCookie();
+        }
         setLoading(false);
       }
     };
@@ -48,6 +54,11 @@ const AuthGate: React.FC<AuthGateProps> = ({ title, children }) => {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setIsAuthenticated(Boolean(session?.access_token));
+      if (session?.access_token) {
+        setSessionTokenCookie(session.access_token, session.expires_at);
+      } else {
+        clearSessionTokenCookie();
+      }
     });
 
     return () => {
@@ -101,6 +112,7 @@ const AuthGate: React.FC<AuthGateProps> = ({ title, children }) => {
     const supabase = getSupabaseBrowserClient();
     if (!supabase) return;
     await supabase.auth.signOut();
+    clearSessionTokenCookie();
   };
 
   if (!isAuthenticated) {

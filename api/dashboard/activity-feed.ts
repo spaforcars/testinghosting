@@ -3,9 +3,21 @@ import { getAuthContext, hasPermission } from '../_lib/auth';
 import { getSupabaseAdmin } from '../_lib/supabaseAdmin';
 import { forbidden, methodNotAllowed, serverError, unauthorized } from '../_lib/http';
 import { isFeatureEnabled } from '../_lib/featureFlags';
-import { fetchDashboardAiRuns, fetchDashboardJobs, fetchDashboardNotifications } from '../_lib/dashboardData';
+import { fetchDashboardAiRuns, fetchDashboardEnquiries, fetchDashboardJobs, fetchDashboardNotifications } from '../_lib/dashboardData';
 
 const readString = (value: unknown) => (typeof value === 'string' ? value : '');
+const readRecord = (value: unknown) =>
+  value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+const buildMessageSnippet = (enquiry: Record<string, unknown>) => {
+  const message = readString(enquiry.message).replace(/\s+/g, ' ').trim();
+  return message.length > 90 ? `${message.slice(0, 87)}...` : message;
+};
+const isFleetProposal = (enquiry: Record<string, unknown>) => {
+  const sourcePage = readString(enquiry.source_page);
+  const serviceType = readString(enquiry.service_type).toLowerCase();
+  const metadata = readRecord(enquiry.metadata);
+  return sourcePage === 'fleet' || serviceType.includes('fleet proposal') || Boolean(readString(metadata.companyName));
+};
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'GET') return methodNotAllowed(res);
@@ -19,11 +31,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const opsEnabled = await isFeatureEnabled(supabase, 'ops_v1_enabled', true);
     if (!opsEnabled) return forbidden(res);
 
-    const [recentLeadsResult, recentJobs, recentNotifications, recentAiRuns] = await Promise.all([
+    const [recentLeadsResult, recentJobs, recentNotifications, recentAiRuns, recentEnquiries] = await Promise.all([
       supabase.from('leads').select('*').order('created_at', { ascending: false }).limit(8),
       fetchDashboardJobs(supabase, { limit: 12 }),
       fetchDashboardNotifications(supabase, auth.userId, { limit: 8 }),
       fetchDashboardAiRuns(supabase, { limit: 8 }),
+      fetchDashboardEnquiries(supabase, { limit: 8 }),
     ]);
 
     if (recentLeadsResult.error) throw new Error(recentLeadsResult.error.message);
@@ -50,6 +63,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         createdAt: readString(job.updated_at) || readString(job.created_at),
         targetId: readString(job.id),
       })),
+      ...recentEnquiries.map((enquiry) => {
+        const metadata = readRecord(enquiry.metadata);
+        const companyName = readString(metadata.companyName);
+        const title = isFleetProposal(enquiry)
+          ? `${companyName || readString(enquiry.name) || 'Fleet prospect'} requested a fleet proposal`
+          : `${readString(enquiry.name) || 'Customer'} sent a message`;
+        return {
+          id: `enquiry:${readString(enquiry.id)}`,
+          kind: 'enquiry',
+          title,
+          subtitle: buildMessageSnippet(enquiry),
+          meta: readString(enquiry.source_page) || 'enquiry',
+          createdAt: readString(enquiry.created_at),
+          targetId: readString(enquiry.id),
+        };
+      }),
       ...recentNotifications.map((notification) => ({
         id: `notification:${readString(notification.id)}`,
         kind: 'notification',

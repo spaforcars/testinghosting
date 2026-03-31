@@ -85,6 +85,35 @@ npm run build
 npm run dev
 ```
 
+## Cloudflare Tunnel
+To expose the local app over a temporary Cloudflare Tunnel:
+
+```bash
+npm run dev
+```
+
+In a second terminal:
+
+```bash
+npm run tunnel
+```
+
+`cloudflared` will print a public `https://<random-subdomain>.trycloudflare.com` URL.
+
+If you need emails, booking links, or dashboard links to use that public address, set:
+
+```bash
+APP_BASE_URL=https://<random-subdomain>.trycloudflare.com
+```
+
+Restart `npm run dev` after changing `APP_BASE_URL`.
+
+To expose the Sanity Studio instead, run:
+
+```bash
+npm run tunnel:studio
+```
+
 ## Notes
 - Form submissions from Contact, Booking, Fleet, and Auto Repair now go through `/api/enquiries`.
 - Enquiry emails are non-blocking: submission succeeds even if email fails.

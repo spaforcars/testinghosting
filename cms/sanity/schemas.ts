@@ -10,6 +10,8 @@ export const siteSettings = {
     { name: 'serviceNotice', type: 'string', title: 'Service Notice' },
     { name: 'contactEmail', type: 'string', title: 'Contact Email' },
     { name: 'contactPhone', type: 'string', title: 'Contact Phone' },
+    { name: 'secondaryContactPhone', type: 'string', title: 'Secondary Contact Phone' },
+    { name: 'contactHours', type: 'text', title: 'Contact Hours' },
     { name: 'topBarHours', type: 'string', title: 'Top Bar Hours' },
     { name: 'address', type: 'string', title: 'Address' },
     { name: 'instagramUrl', type: 'url', title: 'Instagram URL' },

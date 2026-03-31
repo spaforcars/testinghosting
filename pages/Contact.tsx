@@ -3,12 +3,17 @@ import { MapPin, Phone, Mail, Clock } from 'lucide-react';
 import Button from '../components/Button';
 import { apiRequest, ApiError } from '../lib/apiClient';
 import { useCmsPage } from '../hooks/useCmsPage';
-import { adaptContactContent } from '../lib/contentAdapter';
-import { defaultContactPageContent } from '../lib/cmsDefaults';
+import { adaptContactContent, adaptSiteSettingsContent } from '../lib/contentAdapter';
+import { defaultContactPageContent, defaultSiteSettingsContent } from '../lib/cmsDefaults';
 
 const Contact: React.FC = () => {
   const { data: cmsData } = useCmsPage('contact', defaultContactPageContent);
+  const { data: siteSettingsData } = useCmsPage('settings', defaultSiteSettingsContent);
   const content = adaptContactContent(cmsData);
+  const siteSettings = adaptSiteSettingsContent(siteSettingsData);
+  const phoneNumbers = [siteSettings.contactPhone, siteSettings.secondaryContactPhone].filter(
+    (phone, index, phones) => Boolean(phone) && phones.indexOf(phone) === index
+  );
   const [formStatus, setFormStatus] = useState<'idle' | 'submitting' | 'success'>('idle');
   const [formError, setFormError] = useState<string | null>(null);
   const [formData, setFormData] = useState({
@@ -26,6 +31,8 @@ const Contact: React.FC = () => {
     document.querySelectorAll('.sr, .stagger').forEach(el => observer.observe(el));
     return () => observer.disconnect();
   }, []);
+
+  const formatTelHref = (phone: string) => `tel:${phone.replace(/[^\d+]/g, '')}`;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -164,11 +171,12 @@ const Contact: React.FC = () => {
                   <h3 className="font-display text-lg font-semibold uppercase text-brand-black">Hours</h3>
                 </div>
                 <p className="mt-3 text-sm leading-relaxed text-gray-600">
-                  Mon-Fri: 8:00 AM - 6:00 PM
-                  <br />
-                  Sat: 9:00 AM - 5:00 PM
-                  <br />
-                  Sun: By Appointment
+                  {siteSettings.contactHours.split('\n').map((line) => (
+                    <React.Fragment key={line}>
+                      {line}
+                      <br />
+                    </React.Fragment>
+                  ))}
                 </p>
               </div>
               <div className="rounded-2xl border border-black/[0.06] bg-white p-6 shadow-[0_1px_3px_rgba(0,0,0,0.04)] card-hover">
@@ -176,17 +184,26 @@ const Contact: React.FC = () => {
                   <Phone className="h-5 w-5" />
                   <h3 className="font-display text-lg font-semibold uppercase text-brand-black">Phone</h3>
                 </div>
-                <a href="tel:4169864746" className="mt-3 block text-sm text-gray-600 transition-colors hover:text-brand-mclaren">
-                  (416) 986-4746
-                </a>
+                {phoneNumbers.map((phone) => (
+                  <a
+                    key={phone}
+                    href={formatTelHref(phone)}
+                    className="mt-3 block text-sm text-gray-600 transition-colors hover:text-brand-mclaren"
+                  >
+                    {phone}
+                  </a>
+                ))}
               </div>
               <div className="rounded-2xl border border-black/[0.06] bg-white p-6 shadow-[0_1px_3px_rgba(0,0,0,0.04)] card-hover">
                 <div className="flex items-center gap-2 text-brand-mclaren">
                   <Mail className="h-5 w-5" />
                   <h3 className="font-display text-lg font-semibold uppercase text-brand-black">Email</h3>
                 </div>
-                <a href="mailto:info@spaforcars.ca" className="mt-3 block text-sm text-gray-600 transition-colors hover:text-brand-mclaren">
-                  info@spaforcars.ca
+                <a
+                  href={`mailto:${siteSettings.contactEmail}`}
+                  className="mt-3 block text-sm text-gray-600 transition-colors hover:text-brand-mclaren"
+                >
+                  {siteSettings.contactEmail}
                 </a>
               </div>
             </div>

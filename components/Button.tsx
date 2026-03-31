@@ -3,6 +3,7 @@ import { ArrowRight } from 'lucide-react';
 
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: 'primary' | 'secondary' | 'outline' | 'white' | 'black';
+  size?: 'default' | 'lg';
   icon?: boolean;
   fullWidth?: boolean;
 }
@@ -10,13 +11,18 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
 const Button: React.FC<ButtonProps> = ({
   children,
   variant = 'primary',
+  size = 'default',
   icon = false,
   fullWidth = false,
   className = '',
   ...props
 }) => {
   const baseStyles =
-    "inline-flex items-center justify-center gap-2 rounded-full px-7 py-3.5 font-sans text-[13px] font-semibold uppercase tracking-[0.12em] transition-all duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-mclaren/40 focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed";
+    "inline-flex items-center justify-center gap-2 rounded-full font-sans font-semibold uppercase tracking-[0.12em] transition-all duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-mclaren/40 focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed";
+
+  const sizeStyles = size === 'lg'
+    ? "px-8 py-4 text-[14px]"
+    : "px-7 py-3.5 text-[13px]";
 
   const variants = {
     primary:
@@ -36,7 +42,7 @@ const Button: React.FC<ButtonProps> = ({
 
   return (
     <button
-      className={`${baseStyles} ${variants[variant]} ${widthClass} ${groupClass} ${className}`}
+      className={`${baseStyles} ${sizeStyles} ${variants[variant]} ${widthClass} ${groupClass} ${className}`}
       {...props}
     >
       {children}

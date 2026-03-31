@@ -8,6 +8,8 @@
     "build": "vite build",
     "start": "node server.ts",
     "preview": "vite preview",
+    "tunnel": "cloudflared tunnel --url http://localhost:3001",
+    "tunnel:studio": "cloudflared tunnel --url http://localhost:3333",
     "studio": "cd cms/studio && npm run dev",
     "studio:build": "cd cms/studio && npm run build",
     "cms:seed": "tsx scripts/seed-sanity.ts"

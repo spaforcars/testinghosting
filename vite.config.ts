@@ -8,6 +8,11 @@ export default defineConfig(({ mode }) => {
       server: {
         port: 3001,
         host: '0.0.0.0',
+        allowedHosts: [
+          'localhost',
+          '127.0.0.1',
+          '.trycloudflare.com',
+        ],
         proxy: {
           // Allow a standalone Vite dev server to forward API requests to the Express backend.
           '/api': {

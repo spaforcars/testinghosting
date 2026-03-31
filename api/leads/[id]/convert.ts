@@ -4,7 +4,13 @@ import { getSupabaseAdmin } from '../../_lib/supabaseAdmin';
 import { badRequest, forbidden, methodNotAllowed, readRouteId, serverError, unauthorized } from '../../_lib/http';
 import { writeAuditLog } from '../../_lib/audit';
 import { createInAppNotification } from '../../_lib/inAppNotifications';
-import { getBookingServiceSelection, getBookingSettings, getScheduledEndAt } from '../../_lib/booking';
+import {
+  BOOKING_CAPACITY_CONFLICT_MESSAGE,
+  checkInstantBookingCapacity,
+  getBookingServiceSelection,
+  getBookingSettings,
+  getScheduledEndAt,
+} from '../../_lib/booking';
 import { isFeatureEnabled } from '../../_lib/featureFlags';
 import { normalizeServiceAddonIds, normalizeServiceCatalogId } from '../../_lib/serviceSelection';
 
@@ -125,6 +131,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const selection = serviceCatalogId
         ? await getBookingServiceSelection(serviceCatalogId, serviceAddonIds)
         : null;
+      if (body.serviceJob?.scheduledAt && selection?.primaryService.bookingMode === 'instant') {
+        const capacity = await checkInstantBookingCapacity(supabase, {
+          serviceId: selection.primaryService.id,
+          addOnIds: serviceAddonIds,
+          scheduledAt: body.serviceJob.scheduledAt,
+          ignoreCalendarBlocks: true,
+        });
+        if (!capacity.isAvailable) {
+          return res.status(409).json({ error: BOOKING_CAPACITY_CONFLICT_MESSAGE });
+        }
+      }
       const jobPayload = {
         lead_id: lead.id,
         client_id: clientId,

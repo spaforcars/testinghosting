@@ -57,113 +57,6 @@ button:focus-visible {
   outline-offset: 2px;
 }
 
-.dashboard-shell,
-.dashboard-shell * {
-  transition:
-    background-color 180ms ease,
-    border-color 180ms ease,
-    color 180ms ease,
-    box-shadow 180ms ease;
-}
-
-.dashboard-shell--dark {
-  color-scheme: dark;
-  background:
-    radial-gradient(circle at top left, rgba(255, 122, 0, 0.12), transparent 32%),
-    linear-gradient(180deg, #071018 0%, #0b121b 100%);
-  border: 1px solid rgba(148, 163, 184, 0.16);
-  border-radius: 32px;
-  box-shadow: 0 30px 90px rgba(2, 6, 23, 0.45);
-}
-
-.dashboard-shell--dark .dashboard-header {
-  background:
-    linear-gradient(135deg, rgba(12, 18, 28, 0.96) 0%, rgba(19, 25, 36, 0.98) 55%, rgba(12, 18, 28, 0.98) 100%) !important;
-  border-color: rgba(148, 163, 184, 0.16) !important;
-  box-shadow: 0 24px 90px rgba(2, 6, 23, 0.55) !important;
-}
-
-.dashboard-shell--dark .dashboard-header-card,
-.dashboard-shell--dark .dashboard-panel,
-.dashboard-shell--dark .dashboard-metric-card,
-.dashboard-shell--dark .dashboard-insight-card,
-.dashboard-shell--dark .dashboard-table,
-.dashboard-shell--dark .dashboard-empty-state,
-.dashboard-shell--dark .dashboard-detail-card,
-.dashboard-shell--dark .dashboard-tabrail {
-  background: linear-gradient(180deg, rgba(15, 23, 34, 0.94) 0%, rgba(10, 16, 24, 0.98) 100%) !important;
-  border-color: rgba(148, 163, 184, 0.16) !important;
-  box-shadow: 0 18px 40px rgba(2, 6, 23, 0.26);
-}
-
-.dashboard-shell--dark .dashboard-theme-toggle {
-  background: rgba(255, 122, 0, 0.12) !important;
-  color: #ffd7b2 !important;
-  border-color: rgba(255, 122, 0, 0.28) !important;
-}
-
-.dashboard-shell--dark .dashboard-input-control,
-.dashboard-shell--dark .dashboard-select-control {
-  background: rgba(15, 23, 34, 0.92) !important;
-  color: #f5f7fb !important;
-  border-color: rgba(148, 163, 184, 0.18) !important;
-}
-
-.dashboard-shell--dark .dashboard-input-control::placeholder {
-  color: #7f8b9c;
-}
-
-.dashboard-shell--dark [class~='bg-white'] {
-  background-color: rgba(15, 23, 34, 0.92) !important;
-}
-
-.dashboard-shell--dark [class*='bg-white/'] {
-  background-color: rgba(15, 23, 34, 0.78) !important;
-}
-
-.dashboard-shell--dark [class~='bg-neutral-50'] {
-  background-color: rgba(17, 25, 38, 0.88) !important;
-}
-
-.dashboard-shell--dark [class~='bg-neutral-100'] {
-  background-color: rgba(22, 32, 49, 0.95) !important;
-}
-
-.dashboard-shell--dark [class~='border-neutral-200'] {
-  border-color: rgba(148, 163, 184, 0.16) !important;
-}
-
-.dashboard-shell--dark [class~='border-neutral-300'] {
-  border-color: rgba(148, 163, 184, 0.24) !important;
-}
-
-.dashboard-shell--dark .text-brand-black {
-  color: #f5f7fb !important;
-}
-
-.dashboard-shell--dark .text-gray-700 {
-  color: #dbe4ee !important;
-}
-
-.dashboard-shell--dark .text-gray-600 {
-  color: #a8b4c4 !important;
-}
-
-.dashboard-shell--dark .text-gray-500 {
-  color: #8592a3 !important;
-}
-
-.dashboard-shell--dark [class*='hover:bg-brand-mclaren/5']:hover {
-  background-color: rgba(255, 122, 0, 0.1) !important;
-}
-
-.dashboard-shell--dark [class*='hover:text-brand-mclaren']:hover {
-  color: #ff9d4d !important;
-}
-
-.dashboard-shell--dark [class*='hover:border-brand-mclaren']:hover {
-  border-color: rgba(255, 122, 0, 0.45) !important;
-}
 
 /* ── Text strokes ───────────────────────────────────────────────────── */
 
@@ -362,4 +255,214 @@ button:focus-visible {
 @keyframes booking-sheen {
   from { transform: translateX(-25%) rotate(18deg); }
   to { transform: translateX(320%) rotate(18deg); }
+}
+
+/* ── Booking step transitions ─────────────────────────────────────── */
+
+.step-enter {
+  animation: step-slide-in 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes step-slide-in {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Date strip (horizontal scroll) ───────────────────────────────── */
+
+.date-strip {
+  scroll-snap-type: x mandatory;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.date-strip::-webkit-scrollbar {
+  display: none;
+}
+
+.date-strip > * {
+  scroll-snap-align: center;
+}
+
+/* ── Underline fields ─────────────────────────────────────────────── */
+
+.field-underline {
+  background: transparent;
+  border: none;
+  border-bottom: 1.5px solid rgba(0, 0, 0, 0.10);
+  border-radius: 0;
+  padding: 12px 0;
+  width: 100%;
+  font-size: 1rem;
+  color: var(--brand-black);
+  transition: border-color 0.3s;
+}
+
+.field-underline:focus {
+  border-bottom-color: var(--brand-orange);
+  outline: none;
+}
+
+.field-underline::placeholder {
+  color: rgba(0, 0, 0, 0.28);
+}
+
+.field-underline.field-error {
+  border-bottom-color: #ef4444;
+}
+
+/* ── Summary drawer ───────────────────────────────────────────────── */
+
+.summary-drawer {
+  animation: drawer-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes drawer-up {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+.summary-backdrop {
+  animation: backdrop-fade 0.3s ease-out both;
+}
+
+@keyframes backdrop-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ── Success screen ───────────────────────────────────────────────── */
+
+.success-bloom {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at center, rgba(255, 122, 0, 0.18) 0%, transparent 60%);
+  animation: bloom-pulse 3s ease-in-out infinite alternate;
+  pointer-events: none;
+}
+
+@keyframes bloom-pulse {
+  from { opacity: 0.6; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1.04); }
+}
+
+.success-check {
+  animation: check-pop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  animation-delay: 0.2s;
+}
+
+@keyframes check-pop {
+  from { opacity: 0; transform: scale(0); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.success-reveal {
+  animation: text-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.success-reveal-1 { animation-delay: 0.35s; }
+.success-reveal-2 { animation-delay: 0.5s; }
+.success-reveal-3 { animation-delay: 0.65s; }
+.success-reveal-4 { animation-delay: 0.8s; }
+
+@keyframes text-up {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Pill selection bounce ────────────────────────────────────────── */
+
+.pill-pop {
+  animation: pill-pop 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes pill-pop {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.06); }
+  100% { transform: scale(1); }
+}
+
+/* ── Booking CTA sheen ────────────────────────────────────────────── */
+
+.booking-cta {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.booking-cta::after {
+  content: '';
+  position: absolute;
+  inset: -50% auto auto -30%;
+  width: 30%;
+  height: 200%;
+  transform: rotate(18deg);
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0),
+    rgba(255, 255, 255, 0.18),
+    rgba(255, 255, 255, 0)
+  );
+  animation: booking-sheen 4s linear infinite;
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* ── Gold shimmer text ────────────────────────────────────────────── */
+
+.text-shimmer {
+  background: linear-gradient(
+    110deg,
+    #C4A862 0%,
+    #fffbe6 30%,
+    #C4A862 50%,
+    #fffbe6 70%,
+    #C4A862 100%
+  );
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shimmer 3s linear infinite;
+}
+
+@keyframes shimmer {
+  from { background-position: 200% center; }
+  to { background-position: -200% center; }
+}
+
+/* ── Showcase / Gallery ───────────────────────────────────────────── */
+
+.gallery-card {
+  opacity: 0;
+  transform: translateY(32px) scale(0.97);
+  transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.gallery-card.visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.gallery-card-inner {
+  transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1),
+              box-shadow 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 2px 8px -2px rgba(0, 0, 0, 0.06);
+}
+
+.gallery-card-inner:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 20px 50px -16px rgba(0, 0, 0, 0.14);
+}
+
+/* ── Slider handle idle pulse ─────────────────────────────────────── */
+
+.slider-handle-pulse {
+  animation: handle-pulse 2.4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes handle-pulse {
+  0%, 100% { box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3); }
+  50% { box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3), 0 0 0 8px rgba(255, 122, 0, 0.15); }
 }

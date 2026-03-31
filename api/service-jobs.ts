@@ -5,8 +5,16 @@ import { badRequest, forbidden, methodNotAllowed, serverError, unauthorized } fr
 import { writeAuditLog } from './_lib/audit';
 import { createInAppNotification } from './_lib/inAppNotifications';
 import { isFeatureEnabled } from './_lib/featureFlags';
+import { fetchDashboardJobs, loadAssigneeNameLookup } from './_lib/dashboardData';
 import { mapJobToUiStatus, mapJobUiStatusToInternal } from './_lib/dashboardStatus';
-import { getBookingServiceSelection, getBookingSettings, getScheduledEndAt } from './_lib/booking';
+import {
+  BOOKING_CAPACITY_CONFLICT_MESSAGE,
+  checkInstantBookingCapacity,
+  getBookingServiceSelection,
+  getBookingSettings,
+  getScheduledEndAt,
+} from './_lib/booking';
+import { getJobOperatorMeta } from './_lib/operatorWorkflow';
 import { normalizeServiceAddonIds, normalizeServiceCatalogId } from './_lib/serviceSelection';
 
 const isMissingColumnError = (message: string, column: string) =>
@@ -25,6 +33,12 @@ const normalizePagination = (req: VercelRequest) => {
   const offset = (page - 1) * pageSize;
   const to = offset + pageSize - 1;
   return { page, pageSize, offset, to };
+};
+
+const parseBooleanFilter = (value: unknown) => {
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  return null;
 };
 
 const readLegacyPaymentStatus = (details: unknown): 'paid' | 'unpaid' | null => {
@@ -77,60 +91,46 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!hasPermission(auth, 'services', 'read')) return forbidden(res);
 
       const { page, pageSize, offset, to } = normalizePagination(req);
-      let query = supabase
-        .from('service_jobs')
-        .select('*', { count: 'exact' })
-        .order('scheduled_at', { ascending: true, nullsFirst: false })
-        .order('created_at', { ascending: false });
+      const filteredJobs = await fetchDashboardJobs(supabase, {
+        limit: 1000,
+        scheduledFrom: typeof req.query.scheduledFrom === 'string' ? req.query.scheduledFrom : null,
+        scheduledTo: typeof req.query.scheduledTo === 'string' ? req.query.scheduledTo : null,
+        search: typeof req.query.search === 'string' ? req.query.search : null,
+        status: typeof req.query.status === 'string' ? req.query.status : 'all',
+        paymentStatus:
+          req.query.paymentStatus === 'paid' || req.query.paymentStatus === 'unpaid'
+            ? req.query.paymentStatus
+            : 'all',
+        assigneeId: typeof req.query.assigneeId === 'string' ? req.query.assigneeId : 'all',
+        clientId: typeof req.query.clientId === 'string' ? req.query.clientId : null,
+        leadId: typeof req.query.leadId === 'string' ? req.query.leadId : null,
+        unassignedOnly: parseBooleanFilter(req.query.unassignedOnly) === true,
+        overdueOnly: parseBooleanFilter(req.query.overdueOnly) === true,
+        needsPaymentFollowUp: parseBooleanFilter(req.query.needsPaymentFollowUp) === true,
+      });
 
-      if (req.query.status) {
-        const statuses = mapJobUiStatusToInternal(String(req.query.status));
-        query = statuses.length > 1 ? query.in('status', statuses) : query.eq('status', statuses[0]);
-      }
-      if (req.query.assigneeId) query = query.eq('assignee_id', String(req.query.assigneeId));
-      if (req.query.clientId) query = query.eq('client_id', String(req.query.clientId));
-      if (req.query.leadId) query = query.eq('lead_id', String(req.query.leadId));
-      if (req.query.paymentStatus) query = query.eq('payment_status', String(req.query.paymentStatus));
-      if (req.query.scheduledFrom) {
-        const parsed = new Date(String(req.query.scheduledFrom));
-        if (!Number.isNaN(parsed.getTime())) query = query.gte('scheduled_at', parsed.toISOString());
-      }
-      if (req.query.scheduledTo) {
-        const parsed = new Date(String(req.query.scheduledTo));
-        if (!Number.isNaN(parsed.getTime())) query = query.lte('scheduled_at', parsed.toISOString());
-      }
-      if (req.query.search) {
-        const term = String(req.query.search).trim();
-        if (term) {
-          const escaped = term.replace(/,/g, ' ').replace(/%/g, '');
-          query = query.or(
-            `client_name.ilike.%${escaped}%,service_type.ilike.%${escaped}%,notes.ilike.%${escaped}%,vehicle_make.ilike.%${escaped}%,vehicle_model.ilike.%${escaped}%`
-          );
-        }
-      }
-
-      const { data, error, count } = await query.range(offset, to);
-      if (error) throw new Error(error.message);
-
-      const total = count || 0;
+      const total = filteredJobs.length;
       const totalPages = total > 0 ? Math.ceil(total / pageSize) : 1;
-
-      const paymentStatusOverrides = await loadPaymentStatusOverrides(
+      const pageItems = filteredJobs.slice(offset, to + 1);
+      const assigneeLookup = await loadAssigneeNameLookup(
         supabase,
-        (data || []).map((job) => job.id).filter(Boolean)
+        pageItems.map((job) => String(job.assignee_id || '')).filter(Boolean)
       );
 
       return res.status(200).json({
-        serviceJobs: (data || []).map((job) => ({
-          ...job,
-          payment_status:
-            (job.payment_status === 'paid' || job.payment_status === 'unpaid'
-              ? job.payment_status
-              : null) ||
-            paymentStatusOverrides.get(job.id) ||
-            'unpaid',
-          ui_status: mapJobToUiStatus(job.status),
-        })),
+        serviceJobs: pageItems.map((job) => {
+          const operatorMeta = getJobOperatorMeta(job);
+          return {
+            ...job,
+            assignee_label:
+              assigneeLookup.get(String(job.assignee_id || '')) || String(job.assignee_id || '') || null,
+            aging_state: operatorMeta.agingState,
+            follow_up_reason: operatorMeta.followUpReason || null,
+            is_unassigned: operatorMeta.isUnassigned,
+            is_overdue: operatorMeta.isOverdue,
+            needs_payment_follow_up: operatorMeta.needsPaymentFollowUp,
+          };
+        }),
         pagination: { page, pageSize, total, totalPages },
       });
     }
@@ -167,6 +167,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const selection = serviceCatalogId
         ? await getBookingServiceSelection(serviceCatalogId, serviceAddonIds)
         : null;
+      if (body.scheduledAt && selection?.primaryService.bookingMode === 'instant') {
+        const capacity = await checkInstantBookingCapacity(supabase, {
+          serviceId: selection.primaryService.id,
+          addOnIds: serviceAddonIds,
+          scheduledAt: body.scheduledAt,
+          ignoreCalendarBlocks: true,
+        });
+        if (!capacity.isAvailable) {
+          return res.status(409).json({ error: BOOKING_CAPACITY_CONFLICT_MESSAGE });
+        }
+      }
       const scheduledEndAt = getScheduledEndAt(
         body.scheduledAt || null,
         selection?.primaryService || null,
@@ -326,6 +337,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const selection = serviceCatalogIdForEnd
           ? await getBookingServiceSelection(serviceCatalogIdForEnd, serviceAddonIdsForEnd)
           : null;
+        if (scheduledAtForEnd && selection?.primaryService.bookingMode === 'instant') {
+          const capacity = await checkInstantBookingCapacity(supabase, {
+            serviceId: selection.primaryService.id,
+            addOnIds: serviceAddonIdsForEnd,
+            scheduledAt: scheduledAtForEnd,
+            excludeJobId: body.id,
+            ignoreCalendarBlocks: true,
+          });
+          if (!capacity.isAvailable) {
+            return res.status(409).json({ error: BOOKING_CAPACITY_CONFLICT_MESSAGE });
+          }
+        }
         updates.scheduled_end_at = getScheduledEndAt(
           scheduledAtForEnd,
           selection?.primaryService || null,

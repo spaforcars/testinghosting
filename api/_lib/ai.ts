@@ -1,7 +1,9 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { getBookingSettings, getServicesContentForBooking } from './booking';
+import { getCustomerWorkspaceContext } from './customerWorkspace';
 import { getTodayDateKeyForTimeZone, getDailyOpsSummaryData } from './dailyOpsSummary';
 import { buildServiceLabel, getOfferingById, getPrimaryOfferings } from '../../lib/serviceCatalog';
+import { DEFAULT_APP_TIME_ZONE, formatDateTimeInTimeZone } from '../../lib/timeZone';
 import type { ServiceOffering, ServicesPageContent } from '../../types/cms';
 import type {
   AiDraft,
@@ -89,6 +91,8 @@ interface JobAiContext {
   servicesCatalog: Array<Record<string, unknown>>;
   matchedOffering: ServiceOffering | null;
 }
+
+type CustomerAiContext = Awaited<ReturnType<typeof getCustomerWorkspaceContext>>;
 
 const AI_PROMPT_VERSION = '2026-03-16.v1';
 
@@ -1362,6 +1366,244 @@ const buildDailyBriefFallback = (sourceSnapshot: Record<string, unknown>): Provi
   };
 };
 
+const buildCustomerWorkspaceSourceSnapshot = (context: CustomerAiContext) => ({
+  client: context.client,
+  summary: context.summary,
+  vehicles: context.vehicles,
+  serviceJobs: context.serviceJobs.slice(0, 12),
+  unpaidJobs: context.unpaidJobs.slice(0, 8),
+  paidJobs: context.paidJobs.slice(0, 8),
+  leads: context.leads.slice(0, 12),
+  enquiries: context.enquiries.slice(0, 12),
+  messageLogs: context.messageLogs.slice(0, 20),
+  billingRecords: context.billingRecords.slice(0, 12),
+  aiRuns: context.aiRuns.slice(0, 12),
+  timeline: context.timeline.slice(0, 25),
+});
+
+const buildCustomerWorkspaceBriefFallback = (
+  context: CustomerAiContext
+): ProviderExecutionResult['suggestion'] => {
+  const clientName = readString(context.client.name) || 'This customer';
+  const timeZone = DEFAULT_APP_TIME_ZONE;
+  const nextService = context.summary.nextAppointment
+    ? `${readString(context.summary.nextAppointment.service_type)} on ${formatDateTimeInTimeZone(readString(context.summary.nextAppointment.scheduled_at), {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+      }, timeZone)}`
+    : 'No future appointment is currently scheduled.';
+  const recentMessage = context.messageLogs[0];
+  const lastMessageLine = recentMessage
+    ? `${readString(recentMessage.channel).toUpperCase()} ${readString(recentMessage.status)}`
+    : 'No recent outbound message has been logged.';
+
+  return {
+    summary: `${clientName} has ${context.serviceJobs.length} service job${context.serviceJobs.length === 1 ? '' : 's'} on record, ${context.unpaidJobs.length} unpaid item${context.unpaidJobs.length === 1 ? '' : 's'}, and ${context.enquiries.length} recent enquiry/message thread${context.enquiries.length === 1 ? '' : 's'}. ${nextService}`,
+    recommendations: [
+      {
+        title: 'Anchor the next operator action',
+        detail: context.summary.recommendedNextAction,
+        priority: context.summary.unpaidBalance > 0 || context.summary.unassignedUpcomingCount > 0 ? 'high' : 'medium',
+        kind: 'next_step',
+      },
+      {
+        title: 'Review customer risk flags',
+        detail: context.summary.riskFlags.length
+          ? context.summary.riskFlags.join(' | ')
+          : 'No active risk flags are currently surfaced from billing, assignments, or message backlog.',
+        priority: context.summary.riskFlags.length ? 'medium' : 'low',
+        kind: 'risk',
+      },
+      {
+        title: 'Use recent communication context',
+        detail: lastMessageLine,
+        priority: recentMessage ? 'medium' : 'low',
+        kind: 'follow_up',
+      },
+    ],
+    missingInfo: [
+      !readString(context.client.phone) && !readString(context.client.email)
+        ? 'Add a reliable customer contact method before sending a follow-up.'
+        : '',
+      !context.summary.nextAppointment && !context.serviceJobs.length
+        ? 'There is no completed or scheduled service history yet.'
+        : '',
+    ].filter(Boolean),
+    drafts: [],
+    confidence: context.timeline.length ? 0.84 : 0.68,
+    warnings: context.summary.unpaidBalance > 0 ? ['Outstanding balance should be handled before promising new work.'] : [],
+    recommendedNextAction: context.summary.recommendedNextAction,
+    urgency:
+      context.summary.unpaidBalance > 0 || context.summary.unassignedUpcomingCount > 0
+        ? 'high'
+        : context.enquiries.length
+          ? 'medium'
+          : 'low',
+    actions: [],
+  };
+};
+
+const buildCustomerMessageBody = (input: {
+  clientName: string;
+  intent: string;
+  channel: AiDraft['channel'];
+  summary: CustomerAiContext['summary'];
+  latestServiceLabel: string;
+}) => {
+  const greeting = input.channel === 'email' ? `Hi ${input.clientName},` : `Hi ${input.clientName},`;
+  if (input.intent === 'payment_reminder') {
+    return [
+      greeting,
+      '',
+      `This is a quick follow-up from Spa for Cars regarding the outstanding balance on your recent ${input.latestServiceLabel || 'service visit'}.`,
+      'When you have a moment, please reply so we can confirm payment timing or help with the next step.',
+      '',
+      'Thank you,',
+      'Spa for Cars',
+    ].join('\n');
+  }
+
+  if (input.intent === 'reschedule_reply') {
+    return [
+      greeting,
+      '',
+      'Thanks for reaching out. We can help with a reschedule.',
+      'Reply with your preferred day or time window and we will review the next available options for you.',
+      '',
+      'Thank you,',
+      'Spa for Cars',
+    ].join('\n');
+  }
+
+  if (input.intent === 'aftercare_follow_up') {
+    return [
+      greeting,
+      '',
+      `Thanks again for visiting Spa for Cars for ${input.latestServiceLabel || 'your recent service'}.`,
+      'If you have any follow-up questions or want to plan your next visit, reply here and our team will help.',
+      '',
+      'Thank you,',
+      'Spa for Cars',
+    ].join('\n');
+  }
+
+  return [
+    greeting,
+    '',
+    'Thanks for staying in touch with Spa for Cars.',
+    `The current next step on your file is: ${input.summary.recommendedNextAction}`,
+    'Reply here if you want us to review the schedule, payment status, or service details with you.',
+    '',
+    'Thank you,',
+    'Spa for Cars',
+  ].join('\n');
+};
+
+const buildCustomerMessageDraftFallback = (
+  context: CustomerAiContext,
+  intent: string,
+  channel: AiDraft['channel']
+): ProviderExecutionResult['suggestion'] => {
+  const clientName = readString(context.client.name) || 'there';
+  const latestService =
+    readString(context.summary.nextAppointment?.service_type) ||
+    readString(context.summary.lastCompletedService?.service_type) ||
+    readString(context.serviceJobs[0]?.service_type);
+  const body = buildCustomerMessageBody({
+    clientName,
+    intent,
+    channel,
+    summary: context.summary,
+    latestServiceLabel: latestService,
+  });
+
+  const subjectByIntent: Record<string, string> = {
+    payment_reminder: `Follow-up on your Spa for Cars balance`,
+    reschedule_reply: 'Rescheduling your Spa for Cars booking',
+    aftercare_follow_up: `Follow-up after your ${latestService || 'recent service'}`,
+    booking_confirmation: 'Spa for Cars booking follow-up',
+    general_follow_up: 'Following up from Spa for Cars',
+  };
+
+  return {
+    summary: `Prepared a ${channel.toUpperCase()} draft for ${clientName} focused on ${intent.replace(/_/g, ' ')}.`,
+    recommendations: [
+      {
+        title: 'Review before sending',
+        detail: 'Confirm the timing, balance, and service scope details before copying or sending the message.',
+        priority: 'medium',
+        kind: 'follow_up',
+      },
+    ],
+    missingInfo: !readString(context.client.phone) && channel !== 'email'
+      ? ['A phone number is missing for SMS or WhatsApp follow-up.']
+      : [],
+    drafts: [
+      {
+        label: 'Customer Draft',
+        channel,
+        tone: intent === 'payment_reminder' ? 'firm but polite' : 'helpful',
+        subject: channel === 'email' ? subjectByIntent[intent] || subjectByIntent.general_follow_up : undefined,
+        body,
+      },
+    ],
+    confidence: 0.81,
+    warnings: context.summary.unpaidBalance > 0 && intent !== 'payment_reminder'
+      ? ['There is still an unpaid balance on file. Keep the message aligned with that status.']
+      : [],
+    recommendedNextAction: 'Copy the draft, personalize it if needed, then log the communication after sending.',
+    urgency: intent === 'payment_reminder' ? 'high' : 'medium',
+    actions: [],
+  };
+};
+
+const buildCustomerTimelineSummaryFallback = (
+  context: CustomerAiContext
+): ProviderExecutionResult['suggestion'] => {
+  const latestTimelineItems = context.timeline.slice(0, 5);
+  const lastTouch = latestTimelineItems
+    .map((item) => `${item.category}: ${item.title}`)
+    .join(' | ');
+
+  return {
+    summary: latestTimelineItems.length
+      ? `Recent activity for ${readString(context.client.name) || 'this customer'} includes ${lastTouch}.`
+      : `No recent timeline activity is logged yet for ${readString(context.client.name) || 'this customer'}.`,
+    recommendations: [
+      {
+        title: 'Use the timeline to avoid duplicate outreach',
+        detail: context.messageLogs.length
+          ? 'Check the latest logged message before sending another follow-up.'
+          : 'No outbound communication is logged yet, so the next outreach can be recorded cleanly.',
+        priority: 'medium',
+        kind: 'next_step',
+      },
+      {
+        title: 'Tie the timeline to the next operator action',
+        detail: context.summary.recommendedNextAction,
+        priority: 'medium',
+        kind: 'follow_up',
+      },
+    ],
+    missingInfo: latestTimelineItems.length ? [] : ['There is not enough recorded history to build a richer timeline summary yet.'],
+    drafts: [],
+    confidence: latestTimelineItems.length ? 0.79 : 0.61,
+    warnings: [],
+    recommendedNextAction: context.summary.recommendedNextAction,
+    urgency: context.summary.riskFlags.length ? 'medium' : 'low',
+    actions: [],
+  };
+};
+
+export const getCustomerAiContext = async (
+  supabase: SupabaseClient,
+  customerId: string
+): Promise<CustomerAiContext> => getCustomerWorkspaceContext(supabase, customerId);
+
 export const getLeadAiContext = async (supabase: SupabaseClient, leadId: string): Promise<LeadAiContext> => {
   const { data: lead, error } = await supabase.from('leads').select('*').eq('id', leadId).maybeSingle();
   if (error) throw new Error(error.message);
@@ -1732,6 +1974,85 @@ export const buildDailyBriefSuggestion = async (
       'You are an internal operations briefing assistant for a premium detailing studio. Use only the provided source snapshot. Summaries should help the service manager prioritize the day or the current weekly view. Highlight overload, pickups, backlog, and missing ownership clearly.',
     userPrompt: `Generate an internal ${readString(sourceSnapshot.scope) || 'daily'} manager brief from this operational snapshot.\n\nSource snapshot:\n${JSON.stringify(sourceSnapshot, null, 2)}`,
     fallbackSuggestion: buildDailyBriefFallback(sourceSnapshot),
+    persistFeatureState: false,
+  });
+};
+
+export const buildCustomerWorkspaceBriefSuggestion = async (
+  supabase: SupabaseClient,
+  customerId: string,
+  userId?: string | null
+) => {
+  const context = await getCustomerAiContext(supabase, customerId);
+  const sourceSnapshot = buildCustomerWorkspaceSourceSnapshot(context);
+
+  return generateAiSuggestion(supabase, {
+    feature: 'customer_workspace_brief',
+    entityType: 'customer',
+    entityId: customerId,
+    userId,
+    sourceSnapshot,
+    systemPrompt:
+      'You are an internal customer operations copilot for a premium car care business. Use only the provided customer workspace snapshot. Summaries must help staff understand the customer fast, prioritize risk, and decide the next action. Do not invent unpaid balances, communication, or service history.',
+    userPrompt: `Create a grounded internal customer workspace brief from this snapshot. Focus on money, current work, communication history, and recommended next action.\n\nSource snapshot:\n${JSON.stringify(sourceSnapshot, null, 2)}`,
+    fallbackSuggestion: buildCustomerWorkspaceBriefFallback(context),
+    persistFeatureState: false,
+  });
+};
+
+export const buildCustomerMessageDraftSuggestion = async (
+  supabase: SupabaseClient,
+  customerId: string,
+  options: {
+    intent: string;
+    channel: AiDraft['channel'];
+    userId?: string | null;
+  }
+) => {
+  const context = await getCustomerAiContext(supabase, customerId);
+  const sourceSnapshot = {
+    ...buildCustomerWorkspaceSourceSnapshot(context),
+    requestedIntent: options.intent,
+    requestedChannel: options.channel,
+  };
+
+  return generateAiSuggestion(supabase, {
+    feature: 'customer_message_draft',
+    entityType: 'customer',
+    entityId: customerId,
+    userId: options.userId,
+    sourceSnapshot,
+    systemPrompt:
+      'You draft internal-review customer messages for a premium car care business. Use only the provided customer workspace snapshot. Keep the tone clear and concise. Do not promise schedule times, pricing changes, or work that is not present in the data.',
+    userPrompt: `Draft one grounded ${options.channel.toUpperCase()} message for the intent "${options.intent}". Use the customer workspace snapshot only.\n\nSource snapshot:\n${JSON.stringify(sourceSnapshot, null, 2)}`,
+    fallbackSuggestion: buildCustomerMessageDraftFallback(context, options.intent, options.channel),
+    persistFeatureState: false,
+  });
+};
+
+export const buildCustomerTimelineSummarySuggestion = async (
+  supabase: SupabaseClient,
+  customerId: string,
+  userId?: string | null
+) => {
+  const context = await getCustomerAiContext(supabase, customerId);
+  const sourceSnapshot = {
+    client: context.client,
+    summary: context.summary,
+    timeline: context.timeline.slice(0, 40),
+    messageLogs: context.messageLogs.slice(0, 20),
+  };
+
+  return generateAiSuggestion(supabase, {
+    feature: 'customer_timeline_summary',
+    entityType: 'customer',
+    entityId: customerId,
+    userId,
+    sourceSnapshot,
+    systemPrompt:
+      'You summarize internal customer timelines for a premium detailing business. Use only the provided timeline snapshot. Focus on the meaningful sequence of events, recent communication, payment movement, and what operations should do next.',
+    userPrompt: `Summarize this customer timeline into a concise internal narrative with recommended follow-up.\n\nSource snapshot:\n${JSON.stringify(sourceSnapshot, null, 2)}`,
+    fallbackSuggestion: buildCustomerTimelineSummaryFallback(context),
     persistFeatureState: false,
   });
 };

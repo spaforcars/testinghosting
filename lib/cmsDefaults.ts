@@ -320,7 +320,7 @@ export const defaultServicesPageContent: ServicesPageContent = {
       priceLabel: '$150',
       fixedPriceAmount: 150,
       duration: '1-2 Hours',
-      image: '/client-images/IMG_2421_before.PNG',
+      image: '/client-images/IMG_2465.PNG',
       features: [
         'Professional installation',
         'Heat and UV rejection',
@@ -503,8 +503,9 @@ export const defaultFaqPageContent: FaqPageContent = {
 export const defaultContactPageContent: ContactPageContent = {
   title: 'Talk To Our Team',
   subtitle: 'Send us your request and we will get back with recommendations, pricing, and next steps.',
-  address: 'Aurora, Ontario\nGreater Toronto Area',
-  mapEmbedUrl: 'https://www.google.com/maps?q=Aurora%2C%20Ontario&output=embed',
+  address: '88 Berczy Street\nAurora ON L4G 1X1',
+  mapEmbedUrl:
+    'https://www.google.com/maps?q=43.9976194,-79.4596169&z=17&output=embed',
 };
 
 export const defaultAboutPageContent: AboutPageContent = {
@@ -655,10 +656,13 @@ export const defaultSiteSettingsContent: SiteSettingsContent = {
   businessName: 'Spa for Cars',
   serviceNotice: 'Complimentary pick-up & drop off available (within close radius of the store only)',
   contactEmail: 'info@spaforcars.ca',
-  contactPhone: '(416) 986-4746',
-  topBarHours: 'Mon-Sat 8:00 AM - 6:00 PM',
-  address: 'Aurora, Ontario',
-  instagramUrl: 'https://www.instagram.com',
-  tiktokUrl: 'https://www.tiktok.com',
+  contactPhone: '(289) 552-7000',
+  secondaryContactPhone: '(647) 835-9686',
+  contactHours:
+    'Monday to Thursday 8:00 AM - 6:00 PM\nFriday 8:00 AM - 5:30 PM\nSaturday 9:00 AM - 1:00 PM\nSunday Closed',
+  topBarHours: 'Mon-Thu 8:00 AM - 6:00 PM | Fri 8:00 AM - 5:30 PM | Sat 9:00 AM - 1:00 PM',
+  address: '88 Berczy Street\nAurora ON L4G 1X1',
+  instagramUrl: 'https://www.instagram.com/spa4cars_/',
+  tiktokUrl: 'https://www.tiktok.com/@spa4cars_',
   footerTagline: 'Designed for premium automotive care',
 };

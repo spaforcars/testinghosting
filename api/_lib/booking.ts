@@ -3,8 +3,10 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { adaptServicesContent } from '../../lib/contentAdapter';
 import { defaultServicesPageContent } from '../../lib/cmsDefaults';
 import { findOfferingByTitle, getOfferingById } from '../../lib/serviceCatalog';
+import { DEFAULT_APP_TIME_ZONE } from '../../lib/timeZone';
 import type { ServiceOffering, ServicesPageContent } from '../../types/cms';
 import { getCmsPageData } from './cms';
+import { listCalendarTimeBlocks, overlapsCalendarTimeBlock } from './calendarBlocks';
 
 export type BookingMode = 'instant' | 'request';
 export type BookingStatus = 'requested' | 'confirmed' | 'cancelled';
@@ -36,9 +38,12 @@ export interface AvailabilitySlot {
   startAt: string;
   endAt: string;
   label: string;
+  status: 'available' | 'full';
+  message?: string;
 }
 
 interface ScheduledJobLike {
+  id?: string | null;
   scheduled_at?: string | null;
   scheduled_end_at?: string | null;
   service_catalog_id?: string | null;
@@ -56,7 +61,7 @@ const defaultBusinessHours: BookingBusinessHours[] = [
 ];
 
 export const defaultBookingSettings: BookingSettings = {
-  timeZone: 'America/Toronto',
+  timeZone: DEFAULT_APP_TIME_ZONE,
   slotIntervalMinutes: 30,
   bookingWindowDays: 60,
   leadTimeHours: 12,
@@ -65,6 +70,11 @@ export const defaultBookingSettings: BookingSettings = {
   requestResponseSla: 'within 1 business day',
   businessHours: defaultBusinessHours,
 };
+
+export const BOOKING_CAPACITY_LIMIT = 2;
+export const FULLY_BOOKED_SLOT_MESSAGE = 'Fully booked. Call Spa for Cars support.';
+export const BOOKING_CAPACITY_CONFLICT_MESSAGE =
+  'That appointment time is fully booked. Call Spa for Cars support.';
 
 const formatterCache = new Map<string, Intl.DateTimeFormat>();
 
@@ -200,10 +210,7 @@ export const getBookingSettings = async (supabase: SupabaseClient): Promise<Book
   const raw = data?.value && typeof data.value === 'object' ? (data.value as Record<string, unknown>) : {};
 
   return {
-    timeZone:
-      typeof raw.timeZone === 'string' && raw.timeZone.trim()
-        ? raw.timeZone
-        : defaultBookingSettings.timeZone,
+    timeZone: defaultBookingSettings.timeZone,
     slotIntervalMinutes:
       typeof raw.slotIntervalMinutes === 'number' && Number.isFinite(raw.slotIntervalMinutes)
         ? raw.slotIntervalMinutes
@@ -286,11 +293,13 @@ const getJobWindow = (
   const bufferMinutes = getServiceBufferMinutes(primaryService, settings);
   const scheduledEnd = job.scheduled_end_at
     ? new Date(job.scheduled_end_at)
-    : new Date(scheduledStart.getTime() + durationMinutes * 60_000);
+    : new Date(scheduledStart.getTime() + (durationMinutes + bufferMinutes) * 60_000);
+
+  if (Number.isNaN(scheduledEnd.getTime())) return null;
 
   return {
     start: scheduledStart,
-    end: new Date(scheduledEnd.getTime() + bufferMinutes * 60_000),
+    end: scheduledEnd,
   };
 };
 
@@ -315,7 +324,7 @@ const loadScheduledJobsForAvailability = async (
 ): Promise<ScheduledJobLike[]> => {
   const modernQuery = await supabase
     .from('service_jobs')
-    .select('scheduled_at, scheduled_end_at, service_catalog_id, service_addon_ids, service_type, status')
+    .select('id, scheduled_at, scheduled_end_at, service_catalog_id, service_addon_ids, service_type, status')
     .not('scheduled_at', 'is', null)
     .neq('status', 'cancelled')
     .neq('status', 'completed')
@@ -333,7 +342,7 @@ const loadScheduledJobsForAvailability = async (
 
   const legacyQuery = await supabase
     .from('service_jobs')
-    .select('scheduled_at, service_type, status')
+    .select('id, scheduled_at, service_type, status')
     .not('scheduled_at', 'is', null)
     .neq('status', 'cancelled')
     .neq('status', 'completed')
@@ -345,6 +354,82 @@ const loadScheduledJobsForAvailability = async (
   }
 
   return (legacyQuery.data || []) as ScheduledJobLike[];
+};
+
+const countWindowOverlaps = (
+  occupiedWindows: Array<{ start: Date; end: Date }>,
+  candidateStart: Date,
+  candidateEnd: Date
+) =>
+  occupiedWindows.reduce(
+    (count, window) => count + (candidateStart < window.end && candidateEnd > window.start ? 1 : 0),
+    0
+  );
+
+export const checkInstantBookingCapacity = async (
+  supabase: SupabaseClient,
+  options: {
+    serviceId: string;
+    addOnIds?: string[];
+    scheduledAt: string;
+    excludeJobId?: string | null;
+    ignoreCalendarBlocks?: boolean;
+  }
+): Promise<{
+  settings: BookingSettings;
+  primaryService: ServiceOffering;
+  addOns: ServiceOffering[];
+  slot: AvailabilitySlot;
+  overlapCount: number;
+  isAvailable: boolean;
+}> => {
+  const selection = await getBookingServiceSelection(options.serviceId, options.addOnIds || []);
+  if (!selection) {
+    throw new Error('Selected service is not available for booking');
+  }
+
+  if (selection.primaryService.bookingMode !== 'instant') {
+    throw new Error('Selected service requires a request instead of instant booking');
+  }
+
+  const scheduledStart = new Date(options.scheduledAt);
+  if (Number.isNaN(scheduledStart.getTime())) {
+    throw new Error('scheduledAt must be a valid ISO timestamp');
+  }
+
+  const settings = await getBookingSettings(supabase);
+  const durationMinutes = getServiceDurationMinutes(selection.primaryService, selection.addOns);
+  const scheduledEnd = new Date(scheduledStart.getTime() + durationMinutes * 60_000);
+  const queryStart = new Date(scheduledStart.getTime() - 24 * 60 * 60 * 1000).toISOString();
+  const queryEnd = new Date(scheduledEnd.getTime() + 24 * 60 * 60 * 1000).toISOString();
+  const jobs = await loadScheduledJobsForAvailability(supabase, queryStart, queryEnd);
+  const calendarBlocks = options.ignoreCalendarBlocks
+    ? []
+    : await listCalendarTimeBlocks(supabase, { startAt: queryStart, endAt: queryEnd });
+
+  const occupiedWindows = jobs
+    .filter((job) => String(job.id || '') !== String(options.excludeJobId || ''))
+    .map((job) => getJobWindow(job, selection.servicesContent, settings))
+    .filter(Boolean) as Array<{ start: Date; end: Date }>;
+
+  const isBlockedByCalendar = overlapsCalendarTimeBlock(calendarBlocks, scheduledStart, scheduledEnd);
+  const overlapCount = countWindowOverlaps(occupiedWindows, scheduledStart, scheduledEnd);
+  const isAvailable = !isBlockedByCalendar && overlapCount < BOOKING_CAPACITY_LIMIT;
+
+  return {
+    settings,
+    primaryService: selection.primaryService,
+    addOns: selection.addOns,
+    overlapCount,
+    isAvailable,
+    slot: {
+      startAt: scheduledStart.toISOString(),
+      endAt: scheduledEnd.toISOString(),
+      label: formatSlotLabel(scheduledStart, settings.timeZone),
+      status: isAvailable ? 'available' : 'full',
+      message: isAvailable ? undefined : FULLY_BOOKED_SLOT_MESSAGE,
+    },
+  };
 };
 
 export const listAvailableSlots = async (
@@ -384,6 +469,7 @@ export const listAvailableSlots = async (
   const queryStart = new Date(start.getTime() - 24 * 60 * 60 * 1000).toISOString();
   const queryEnd = new Date(end.getTime() + 24 * 60 * 60 * 1000).toISOString();
   const jobs = await loadScheduledJobsForAvailability(supabase, queryStart, queryEnd);
+  const calendarBlocks = await listCalendarTimeBlocks(supabase, { startAt: queryStart, endAt: queryEnd });
 
   const occupiedWindows = (jobs || [])
     .map((job) => getJobWindow(job, servicesContent, settings))
@@ -404,17 +490,16 @@ export const listAvailableSlots = async (
     const candidateEnd = new Date(candidateStart.getTime() + durationMinutes * 60_000);
     if (candidateStart < leadThreshold) continue;
 
-    const isBlocked = occupiedWindows.some(
-      (window) => candidateStart < window.end && candidateEnd > window.start
-    );
-
-    if (!isBlocked) {
-      slots.push({
-        startAt: candidateStart.toISOString(),
-        endAt: candidateEnd.toISOString(),
-        label: formatSlotLabel(candidateStart, settings.timeZone),
-      });
-    }
+    const isBlockedByCalendar = overlapsCalendarTimeBlock(calendarBlocks, candidateStart, candidateEnd);
+    const overlapCount = countWindowOverlaps(occupiedWindows, candidateStart, candidateEnd);
+    const isAvailable = !isBlockedByCalendar && overlapCount < BOOKING_CAPACITY_LIMIT;
+    slots.push({
+      startAt: candidateStart.toISOString(),
+      endAt: candidateEnd.toISOString(),
+      label: formatSlotLabel(candidateStart, settings.timeZone),
+      status: isAvailable ? 'available' : 'full',
+      message: isAvailable ? undefined : FULLY_BOOKED_SLOT_MESSAGE,
+    });
   }
 
   return { settings, primaryService, addOns, slots };

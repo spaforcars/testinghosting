@@ -555,6 +555,11 @@ export const adaptSiteSettingsContent = (raw: unknown): SiteSettingsContent => {
     serviceNotice: ensureString(page.serviceNotice, defaultSiteSettingsContent.serviceNotice),
     contactEmail: ensureString(page.contactEmail, defaultSiteSettingsContent.contactEmail),
     contactPhone: ensureString(page.contactPhone, defaultSiteSettingsContent.contactPhone),
+    secondaryContactPhone: ensureString(
+      page.secondaryContactPhone,
+      defaultSiteSettingsContent.secondaryContactPhone
+    ),
+    contactHours: ensureString(page.contactHours, defaultSiteSettingsContent.contactHours),
     topBarHours: ensureString(page.topBarHours, defaultSiteSettingsContent.topBarHours),
     address: ensureString(page.address, defaultSiteSettingsContent.address),
     instagramUrl: ensureString(page.instagramUrl, defaultSiteSettingsContent.instagramUrl),

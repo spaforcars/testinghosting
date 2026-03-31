@@ -10,9 +10,32 @@ export interface AuthContext {
 
 const extractToken = (req: VercelRequest): string | null => {
   const authHeader = req.headers.authorization;
-  if (!authHeader) return null;
-  if (!authHeader.startsWith('Bearer ')) return null;
-  return authHeader.replace('Bearer ', '').trim();
+  if (authHeader) {
+    if (authHeader.startsWith('Bearer ')) return authHeader.replace('Bearer ', '').trim();
+    if (authHeader.trim()) return authHeader.trim();
+  }
+
+  const tunneledHeader = req.headers['x-supabase-access-token'];
+  if (typeof tunneledHeader === 'string' && tunneledHeader.trim()) {
+    return tunneledHeader.trim();
+  }
+  if (Array.isArray(tunneledHeader)) {
+    const token = tunneledHeader.find((value) => typeof value === 'string' && value.trim());
+    if (token) return token.trim();
+  }
+
+  const cookieHeader = req.headers.cookie;
+  const cookieString = Array.isArray(cookieHeader) ? cookieHeader.join('; ') : cookieHeader || '';
+  const cookieMatch = cookieString.match(/(?:^|;\s*)spa_session_token=([^;]+)/);
+  if (cookieMatch?.[1]) {
+    try {
+      return decodeURIComponent(cookieMatch[1]);
+    } catch {
+      return cookieMatch[1];
+    }
+  }
+
+  return null;
 };
 
 const rolePermissionsFallback: Record<string, string[]> = {

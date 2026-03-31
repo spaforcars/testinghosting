@@ -1,10 +1,13 @@
-export type AiEntityType = 'lead' | 'service_job' | 'report';
+export type AiEntityType = 'lead' | 'service_job' | 'customer' | 'report';
 
 export type AiFeature =
   | 'lead_copilot'
   | 'lead_reply_draft'
   | 'job_work_brief'
   | 'job_aftercare_draft'
+  | 'customer_workspace_brief'
+  | 'customer_message_draft'
+  | 'customer_timeline_summary'
   | 'daily_brief';
 
 export type AiRunStatus =

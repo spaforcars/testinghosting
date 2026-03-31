@@ -5,6 +5,8 @@ import { badRequest, forbidden, methodNotAllowed, serverError, unauthorized } fr
 import { writeAuditLog } from './_lib/audit';
 import { isFeatureEnabled } from './_lib/featureFlags';
 import { mapLeadToUiStatus, mapLeadUiStatusToInternal } from './_lib/dashboardStatus';
+import { loadAssigneeNameLookup } from './_lib/dashboardData';
+import { getLeadOperatorMeta, type LeadSourceGroup } from './_lib/operatorWorkflow';
 import { normalizeServiceAddonIds, normalizeServiceCatalogId } from './_lib/serviceSelection';
 
 const allowedLeadStatuses = new Set([
@@ -31,6 +33,12 @@ const normalizePagination = (req: VercelRequest) => {
   return { page, pageSize, offset, to };
 };
 
+const parseBooleanFilter = (value: unknown) => {
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  return null;
+};
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const supabase = getSupabaseAdmin();
@@ -46,10 +54,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!hasPermission(auth, 'leads', 'read')) return forbidden(res);
 
       const { page, pageSize, offset, to } = normalizePagination(req);
+      const sourceGroup =
+        typeof req.query.sourceGroup === 'string' &&
+        ['fleet', 'contact', 'booking', 'all'].includes(req.query.sourceGroup)
+          ? (req.query.sourceGroup as LeadSourceGroup)
+          : 'all';
+      const bookingMode =
+        req.query.bookingMode === 'instant' || req.query.bookingMode === 'request'
+          ? req.query.bookingMode
+          : null;
+      const unassignedOnly = parseBooleanFilter(req.query.unassignedOnly) === true;
+      const needsFollowUp = parseBooleanFilter(req.query.needsFollowUp) === true;
+
       let query = supabase
         .from('leads')
-        .select('*', { count: 'exact' })
-        .order('created_at', { ascending: false });
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(500);
 
       if (req.query.status) {
         const statuses = mapLeadUiStatusToInternal(String(req.query.status));
@@ -63,6 +84,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
       if (req.query.assigneeId) {
         query = query.eq('assignee_id', String(req.query.assigneeId));
+      }
+      if (bookingMode) {
+        query = query.eq('booking_mode', bookingMode);
       }
       if (req.query.dateFrom) {
         const parsed = new Date(String(req.query.dateFrom));
@@ -89,17 +113,46 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
       }
 
-      const { data, error, count } = await query.range(offset, to);
+      const { data, error } = await query;
       if (error) throw new Error(error.message);
 
-      const total = count || 0;
+      const assigneeLookup = await loadAssigneeNameLookup(
+        supabase,
+        ((data || []) as Array<Record<string, unknown>>)
+          .map((lead) => String(lead.assignee_id || ''))
+          .filter(Boolean)
+      );
+
+      const normalized = ((data || []) as Array<Record<string, unknown>>)
+        .map((lead) => {
+          const operatorMeta = getLeadOperatorMeta(lead as never);
+          return {
+            ...lead,
+            ui_status: mapLeadToUiStatus(String(lead.status || '')),
+            assignee_label:
+              assigneeLookup.get(String(lead.assignee_id || '')) || String(lead.assignee_id || '') || null,
+            aging_state: operatorMeta.agingState,
+            follow_up_reason: operatorMeta.followUpReason || null,
+            is_unassigned: operatorMeta.isUnassigned,
+            is_reviewed: operatorMeta.isReviewed,
+            reviewed_at: operatorMeta.reviewedAt,
+            reviewed_by: operatorMeta.reviewedBy,
+            source_group: operatorMeta.sourceGroup,
+          };
+        })
+        .filter((lead) => {
+          if (sourceGroup !== 'all' && lead.source_group !== sourceGroup) return false;
+          if (unassignedOnly && !lead.is_unassigned) return false;
+          if (needsFollowUp && lead.aging_state === 'fresh') return false;
+          return true;
+        });
+
+      const total = normalized.length;
       const totalPages = total > 0 ? Math.ceil(total / pageSize) : 1;
+      const paginated = normalized.slice(offset, to + 1);
 
       return res.status(200).json({
-        leads: (data || []).map((lead) => ({
-          ...lead,
-          ui_status: mapLeadToUiStatus(lead.status),
-        })),
+        leads: paginated,
         pagination: {
           page,
           pageSize,

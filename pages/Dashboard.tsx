@@ -1,21 +1,20 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+
+import React, { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Bell,
   Bot,
-  CalendarDays,
-  ChevronDown,
-  ChevronUp,
-  Clipboard,
-  CircleDollarSign,
-  LayoutDashboard,
-  LayoutGrid,
-  MessageSquareText,
-  Moon,
-  RefreshCw,
-  SunMedium,
-  TableProperties,
+  Calendar,
+  ChevronRight,
+  Clock,
+  LayoutList,
+  LineChart,
+  MessageSquare,
+  Plus,
+  RotateCw,
+  Search,
+  Send,
   Users,
-  Wrench,
+  X,
 } from 'lucide-react';
 import AuthGate from '../components/AuthGate';
 import { ApiError, apiRequest } from '../lib/apiClient';
@@ -23,3917 +22,1597 @@ import { useCmsPage } from '../hooks/useCmsPage';
 import { adaptServicesContent } from '../lib/contentAdapter';
 import { defaultServicesPageContent } from '../lib/cmsDefaults';
 import {
+  dateTimeInputToUtcIso,
+  DEFAULT_APP_TIME_ZONE,
+  formatDateTimeInTimeZone,
+  formatForDateTimeInput,
+  getTimeZoneDateKey,
+  getTimeZoneParts,
+  isSameTimeZoneDate,
+  localDateKeyToUtcRange,
+  parseDateTimeInputValue,
+  shiftTimeZoneDateKey,
+  zonedDateTimeToUtc,
+} from '../lib/timeZone';
+import {
   buildServiceLabel,
-  estimateServiceAmount,
-  findOfferingByTitle,
   getAddOnOfferings,
   getOfferingById,
   getPrimaryOfferings,
   groupOfferingsByCategory,
+  findOfferingByTitle,
   resolveServiceDisplay,
 } from '../lib/serviceCatalog';
 import type { ServiceOffering } from '../types/cms';
-import type { AiDraft, AiFeatureState, AiRun, AiSuggestion } from '../types/ai';
 import type {
-  ClientRecord,
-  CustomerVehicle,
+  CustomerWorkspaceResponse,
   InAppNotification,
-  JobPaymentStatus,
   JobUiStatus,
   Lead,
   LeadUiStatus,
-  ServiceJob,
 } from '../types/platform';
 
-type DashboardTab =
-  | 'overview'
-  | 'leads'
-  | 'jobs'
-  | 'customers'
-  | 'payments'
-  | 'notifications'
-  | 'copilot'
-  | 'reports';
+/* ?? Types ??????????????????????????????????????????????????????????? */
 
-type AuthMeResponse = {
-  userId: string;
-  email?: string;
-  role: string;
-  permissions: string[];
-};
+type DashboardView = 'schedule' | 'calendar' | 'leads' | 'reports';
 
-type MetricsResponse = {
-  newLeadsToday: number;
-  newCustomersToday: number;
-  newCustomersOrLeadsToday: number;
-  jobsScheduledToday: number;
-  activeCustomers: number;
-  expectedRevenueToday: number;
-  expectedRevenueTotal: number;
-  unreadNotifications: number;
-};
+type SchedulePreset = 'today' | 'tomorrow' | 'this_week' | 'next_7_days';
+type CalendarBlockSource = 'general' | 'walk_in' | 'mobile' | 'support';
 
-type Pagination = {
-  page: number;
-  pageSize: number;
-  total: number;
-  totalPages: number;
-};
+type AuthMeResponse = { userId: string; email?: string; role: string; permissions: string[] };
 
-type LeadsResponse = {
-  leads: Lead[];
-  pagination: Pagination;
-};
-
-type JobsResponse = {
-  serviceJobs: ServiceJob[];
-  pagination: Pagination;
-};
-
-type ClientsResponse = {
-  clients: ClientRecord[];
-  pagination: Pagination;
-};
-
-type NotificationsResponse = {
-  notifications: InAppNotification[];
-};
-
-type AiRunsResponse = {
-  runs: AiRun[];
-};
-
-type AiSuggestionResponse = {
-  suggestion: AiSuggestion;
-};
-
-type CommandCenterJob = {
-  id: string;
-  clientName: string;
-  serviceType: string;
-  scheduledAt?: string | null;
-  dayLabel?: string | null;
-  uiStatus: JobUiStatus;
-  paymentStatus: JobPaymentStatus;
-  estimatedAmount: number;
-  bookingSource?: string | null;
-  bookingReference?: string | null;
-  pickupRequested?: boolean;
-  notes?: string | null;
-};
-
-type CommandCenterOpenRequest = {
-  id: string;
-  name: string;
-  phone?: string | null;
-  serviceType?: string | null;
-  createdAt: string;
-  bookingMode?: string | null;
-  status: string;
-  intakeMetadata?: Record<string, unknown>;
-};
-
-type CommandCenterResponse = {
-  summary: {
-    urgentActionCount: number;
-    overdueUnpaidCount: number;
-    leadsNeedingFollowUpCount: number;
-    openRequestCount: number;
-    aiReviewCount: number;
-    unreadNotificationCount: number;
-    expectedRevenueToday: number;
-    expectedRevenueTotal: number;
-    unpaidRevenueTotal: number;
-  };
-  urgentActions: Array<{
-    id: string;
-    kind: 'job' | 'lead' | 'ai' | 'notification';
-    urgency: 'high' | 'medium' | 'low';
-    title: string;
-    subtitle: string;
-    actionLabel: string;
-    targetId: string;
-  }>;
-  todaySchedule: CommandCenterJob[];
-  nextUp: CommandCenterJob[];
-  openRequests: CommandCenterOpenRequest[];
-  revenueFocus: {
-    unpaidRevenueTotal: number;
-    highestValueUnpaidJobs: Array<{
-      id: string;
-      clientName: string;
-      serviceType: string;
-      estimatedAmount: number;
-      scheduledAt?: string | null;
-      paymentStatus: JobPaymentStatus;
-    }>;
-  };
-  unreadNotifications: InAppNotification[];
-  aiReviewRuns: AiRun[];
-};
-
-type OpsChatResponse = {
-  answer: string;
-  supportingFacts: string[];
-  followUpQuestions: string[];
-  mode: 'ai' | 'fallback';
-  warning?: string | null;
-};
-
-type OpsChatMessage = {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  supportingFacts?: string[];
-  followUpQuestions?: string[];
-  mode?: 'ai' | 'fallback';
-  warning?: string | null;
-};
-
-type ClientDetailsResponse = {
-  client: ClientRecord;
-  vehicles: CustomerVehicle[];
-  serviceJobs: ServiceJob[];
-  leads: Lead[];
-  timelineEvents: Array<{
-    id: string;
-    event_type: string;
-    note?: string | null;
-    created_at: string;
-  }>;
-  billingRecords: Array<Record<string, unknown>>;
-};
-
+type Pagination = { page: number; pageSize: number; total: number; totalPages: number };
+type LeadsResponse = { leads: Lead[]; pagination: Pagination };
+type NotificationsResponse = { notifications: InAppNotification[] };
 type ReportsResponse = {
   summary: {
-    dateFrom: string;
-    dateTo: string;
-    weeklyEstimatedRevenue: number;
-    monthlyEstimatedRevenue: number;
-    vehiclesDetailedCount: number;
-    completedJobsCount: number;
+    dateFrom: string; dateTo: string;
+    weeklyEstimatedRevenue: number; monthlyEstimatedRevenue: number;
+    vehiclesDetailedCount: number; completedJobsCount: number;
   };
   jobsByStatus: Record<string, number>;
-  csvRows: {
-    jobs: Array<Record<string, unknown>>;
-    leads: Array<Record<string, unknown>>;
-    billing: Array<Record<string, unknown>>;
-  };
-};
-
-type ActivityFeedResponse = {
-  items: Array<{
-    id: string;
-    kind: 'lead' | 'job' | 'payment' | 'notification' | 'ai';
-    title: string;
-    subtitle: string;
-    meta: string;
-    createdAt: string;
-    targetId: string;
-  }>;
 };
 
 type ScheduleBoardJob = {
-  id: string;
-  clientName: string;
-  serviceType: string;
-  scheduledAt?: string | null;
-  scheduledEndAt?: string | null;
-  uiStatus: JobUiStatus;
-  paymentStatus: JobPaymentStatus;
-  estimatedAmount: number;
-  bookingSource?: string | null;
-  bookingReference?: string | null;
-  pickupRequested: boolean;
-  notes?: string | null;
-  vehicleLabel: string;
-  assigneeId?: string | null;
-  assigneeLabel: string;
-  aiMetadata?: Record<string, unknown>;
+  id: string; clientId?: string | null; clientName: string; serviceType: string;
+  scheduledAt?: string | null; scheduledEndAt?: string | null; uiStatus: JobUiStatus;
+  estimatedAmount: number; bookingSource?: string | null; bookingReference?: string | null;
+  pickupRequested: boolean; notes?: string | null; vehicleLabel: string;
+};
+
+type CalendarTimeBlock = {
+  id: string; title: string; startAt: string; endAt: string; source: CalendarBlockSource;
+  notes?: string | null; createdAt: string; updatedAt: string;
 };
 
 type ScheduleBoardResponse = {
-  summary: {
-    totalJobs: number;
-    unpaidJobs: number;
-    pickupJobs: number;
-    completedJobs: number;
-  };
-  filters: {
-    assignees: Array<{ id: string; label: string; count: number }>;
-  };
+  timeZone: string;
+  summary: { totalJobs: number; unpaidJobs: number; pickupJobs: number; completedJobs: number };
+  blocks: CalendarTimeBlock[];
   groups: Array<{
-    key: string;
-    label: string;
-    date?: string | null;
+    key: string; label: string; date?: string | null;
+    summary: { totalJobs: number; unpaidJobs: number; pickupJobs: number };
     jobs: ScheduleBoardJob[];
   }>;
 };
 
-type LeadFormState = {
-  name: string;
-  phone: string;
-  email: string;
-  serviceType: string;
-  serviceCatalogId: string;
-  serviceAddonIds: string[];
-  customServiceType: string;
-  vehicleMake: string;
-  vehicleModel: string;
-  vehicleYear: string;
-  status: LeadUiStatus;
+type OpsChatMessage = {
+  id: string; role: 'user' | 'assistant'; content: string;
+  sections?: Array<{ title: string; items: string[] }>;
+  supportingFacts?: string[]; followUpQuestions?: string[];
+  mode?: 'ai' | 'fallback'; warning?: string | null;
+  actionProposal?: {
+    type: 'calendar_block';
+    status: 'pending_confirmation' | 'confirmed' | 'cancelled';
+    title: string;
+    startAt: string;
+    endAt: string;
+    source: CalendarBlockSource;
+    notes?: string | null;
+  } | null;
 };
 
-type JobFormState = {
-  clientId: string;
-  clientName: string;
-  serviceType: string;
-  serviceCatalogId: string;
-  serviceAddonIds: string[];
-  customServiceType: string;
-  scheduledAt: string;
-  vehicleMake: string;
-  vehicleModel: string;
-  vehicleYear: string;
-  estimatedAmount: string;
-  paymentStatus: JobPaymentStatus;
-  notes: string;
+type BookingForm = {
+  clientId: string; clientName: string; serviceCatalogId: string;
+  serviceAddonIds: string[]; customServiceType: string; scheduledAt: string;
+  vehicleMake: string; vehicleModel: string; vehicleYear: string;
+  estimatedAmount: string; notes: string;
 };
 
-const tabs: Array<{ id: DashboardTab; label: string; icon: React.ComponentType<{ className?: string }> }> = [
-  { id: 'overview', label: 'Daily Overview', icon: LayoutDashboard },
-  { id: 'leads', label: 'New Customers / Leads', icon: Users },
-  { id: 'jobs', label: 'Appointments / Jobs', icon: CalendarDays },
-  { id: 'customers', label: 'Customer Database', icon: Users },
-  { id: 'payments', label: 'Payments', icon: CircleDollarSign },
-  { id: 'notifications', label: 'Notifications', icon: Bell },
-  { id: 'copilot', label: 'Ops Copilot', icon: Bot },
-  { id: 'reports', label: 'Reports', icon: Wrench },
+type CalendarBlockForm = {
+  startAt: string; endAt: string; source: CalendarBlockSource; title: string; notes: string;
+};
+
+/* ?? Constants ??????????????????????????????????????????????????????? */
+
+const emptyForm: BookingForm = {
+  clientId: '', clientName: '', serviceCatalogId: '', serviceAddonIds: [],
+  customServiceType: '', scheduledAt: '', vehicleMake: '', vehicleModel: '',
+  vehicleYear: '', estimatedAmount: '', notes: '',
+};
+
+const calendarBlockSourceOptions: Array<{ value: CalendarBlockSource; label: string }> = [
+  { value: 'general', label: 'General block' },
+  { value: 'walk_in', label: 'Walk-in hold' },
+  { value: 'mobile', label: 'Doorstep hold' },
+  { value: 'support', label: 'Support hold' },
 ];
 
-const opsCopilotPromptSuggestions = [
-  'How many pending jobs do we have this week?',
-  'Who has already paid and what service did they book?',
-  'Show me note highlights for unpaid customers.',
-  'Who requested pickup or drop-off recently?',
-  'How much expected revenue do we have in total?',
+const presetOptions: Array<{ value: SchedulePreset; label: string }> = [
+  { value: 'today', label: 'Today' },
+  { value: 'tomorrow', label: 'Tomorrow' },
+  { value: 'this_week', label: 'This Week' },
+  { value: 'next_7_days', label: 'Next 7 Days' },
+];
+
+const viewTabs: Array<{ id: DashboardView; label: string; icon: React.ComponentType<{ className?: string }> }> = [
+  { id: 'schedule', label: 'Schedule', icon: LayoutList },
+  { id: 'calendar', label: 'Calendar', icon: Calendar },
+  { id: 'leads', label: 'Leads', icon: Users },
+  { id: 'reports', label: 'Reports', icon: LineChart },
+];
+
+const leadStatusLabel: Record<LeadUiStatus, string> = {
+  new_lead: 'New', booked: 'Booked', service_completed: 'Completed', closed_lost: 'Lost',
+};
+
+const copilotPrompts = [
+  'Who is booked today and in what order?',
+  'Which upcoming appointments have no customer notes?',
+  'Give me a prep brief for the next 3 bookings.',
 ] as const;
 
-const createOpsChatMessageId = () =>
-  typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-    ? crypto.randomUUID()
-    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+const CALENDAR_START_HOUR = 7;
+const CALENDAR_END_HOUR = 21;
+const HOUR_PX = 64;
+const CALENDAR_DRAG_STEP_MINUTES = 30;
 
-const dashboardThemeStorageKey = 'spa-dashboard-theme';
+/* ?? Utilities ??????????????????????????????????????????????????????? */
 
-const getInitialDashboardTheme = (): DashboardTheme => {
-  if (typeof window === 'undefined') return 'light';
-
-  const stored = window.localStorage.getItem(dashboardThemeStorageKey);
-  if (stored === 'light' || stored === 'dark') return stored;
-
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+const qs = (p: Record<string, string | number | undefined>) => {
+  const s = new URLSearchParams();
+  Object.entries(p).forEach(([k, v]) => { if (v !== undefined && v !== '') s.set(k, String(v)); });
+  const o = s.toString();
+  return o ? `?${o}` : '';
 };
 
-const initialOpsChatMessage: OpsChatMessage = {
-  id: 'ops-copilot-welcome',
-  role: 'assistant',
-  content:
-    'Ask about pending schedules, paid and unpaid jobs, customer notes, pickup requests, lead messages, or expected revenue. Answers are grounded in the live dashboard data.',
-  supportingFacts: [
-    'Structured answers come from current jobs, leads, clients, and payment state.',
-    'If AI is unavailable, the copilot falls back to a direct metrics summary.',
-  ],
-  followUpQuestions: [...opsCopilotPromptSuggestions],
-  mode: 'fallback',
+const withTimeOnDate = (dateKey: string, minutes: number, timeZone: string) => {
+  const [year, month, day] = dateKey.split('-').map((value) => Number(value));
+  return zonedDateTimeToUtc(
+    {
+      year,
+      month,
+      day,
+      hour: Math.floor(minutes / 60),
+      minute: minutes % 60,
+      second: 0,
+    },
+    timeZone
+  );
 };
-
-type SchedulePreset = 'today' | 'tomorrow' | 'this_week' | 'next_7_days';
-type ScheduleViewMode = 'board' | 'table';
-type DashboardTheme = 'light' | 'dark';
-
-const emptyMetrics: MetricsResponse = {
-  newLeadsToday: 0,
-  newCustomersToday: 0,
-  newCustomersOrLeadsToday: 0,
-  jobsScheduledToday: 0,
-  activeCustomers: 0,
-  expectedRevenueToday: 0,
-  expectedRevenueTotal: 0,
-  unreadNotifications: 0,
+const snapMinutes = (minutes: number) => {
+  const clamped = Math.max(CALENDAR_START_HOUR * 60, Math.min(CALENDAR_END_HOUR * 60, minutes));
+  return Math.round(clamped / CALENDAR_DRAG_STEP_MINUTES) * CALENDAR_DRAG_STEP_MINUTES;
 };
-
-const emptyLeadForm: LeadFormState = {
-  name: '',
-  phone: '',
-  email: '',
-  serviceType: '',
-  serviceCatalogId: '',
-  serviceAddonIds: [],
-  customServiceType: '',
-  vehicleMake: '',
-  vehicleModel: '',
-  vehicleYear: '',
-  status: 'new_lead',
-};
-
-const emptyJobForm: JobFormState = {
-  clientId: '',
-  clientName: '',
-  serviceType: '',
-  serviceCatalogId: '',
-  serviceAddonIds: [],
-  customServiceType: '',
-  scheduledAt: '',
-  vehicleMake: '',
-  vehicleModel: '',
-  vehicleYear: '',
-  estimatedAmount: '',
-  paymentStatus: 'unpaid',
-  notes: '',
-};
-
-const qs = (params: Record<string, string | number | undefined>) => {
-  const search = new URLSearchParams();
-  Object.entries(params).forEach(([key, value]) => {
-    if (value === undefined || value === '') return;
-    search.set(key, String(value));
-  });
-  const output = search.toString();
-  return output ? `?${output}` : '';
-};
-
-const currency = (value?: number | null) =>
-  new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD' }).format(Number(value || 0));
-
-const fmtDateTime = (value?: string | null) => {
-  if (!value) return '-';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '-';
-  return date.toLocaleString();
-};
-
-const fmtDate = (value?: string | null) => {
-  if (!value) return '-';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '-';
-  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', weekday: 'short' });
-};
-
-const fmtTime = (value?: string | null) => {
-  if (!value) return '-';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '-';
-  return date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
-};
-
-const fmtRelative = (value?: string | null) => {
-  if (!value) return '-';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '-';
-  const diffMs = date.getTime() - Date.now();
-  const diffHours = Math.round(diffMs / 3_600_000);
-  if (Math.abs(diffHours) < 24) {
-    return diffHours === 0
-      ? 'Now'
-      : diffHours > 0
-        ? `in ${diffHours}h`
-        : `${Math.abs(diffHours)}h ago`;
-  }
-  const diffDays = Math.round(diffHours / 24);
-  return diffDays > 0 ? `in ${diffDays}d` : `${Math.abs(diffDays)}d ago`;
-};
-
-const isoDateTimeLocal = (date: Date) => {
-  const clone = new Date(date);
-  clone.setMinutes(clone.getMinutes() - clone.getTimezoneOffset());
-  return clone.toISOString();
-};
-
-const getSchedulePresetRange = (preset: SchedulePreset) => {
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(start);
-
-  if (preset === 'today') {
-    end.setDate(end.getDate() + 1);
-  } else if (preset === 'tomorrow') {
-    start.setDate(start.getDate() + 1);
-    end.setDate(start.getDate() + 1);
-  } else if (preset === 'this_week') {
-    end.setDate(end.getDate() + 7);
-  } else {
-    end.setDate(end.getDate() + 8);
-  }
-
+const defaultCalendarBlockForm = (timeZone: string): CalendarBlockForm => {
+  const nowParts = getTimeZoneParts(new Date(), timeZone);
+  const start = zonedDateTimeToUtc(
+    {
+      year: nowParts?.year || 1970,
+      month: nowParts?.month || 1,
+      day: nowParts?.day || 1,
+      hour: (nowParts?.hour || 0) + 1,
+      minute: 0,
+      second: 0,
+    },
+    timeZone
+  );
+  const end = new Date(start.getTime() + 2 * 60 * 60 * 1000);
   return {
-    dateFrom: isoDateTimeLocal(start),
-    dateTo: isoDateTimeLocal(end),
+    startAt: formatForDateTimeInput(start, timeZone),
+    endAt: formatForDateTimeInput(end, timeZone),
+    source: 'walk_in',
+    title: 'Walk-in hold',
+    notes: '',
   };
 };
 
-const schedulePresetLabel: Record<SchedulePreset, string> = {
-  today: 'Today',
-  tomorrow: 'Tomorrow',
-  this_week: 'This Week',
-  next_7_days: 'Next 7 Days',
-};
-
-const vehicleLabel = (vehicle: {
-  vehicle_year?: number | null;
-  vehicle_make?: string | null;
-  vehicle_model?: string | null;
-  year?: number | null;
-  make?: string | null;
-  model?: string | null;
-}) => {
-  const year = vehicle.vehicle_year ?? vehicle.year;
-  const make = vehicle.vehicle_make ?? vehicle.make;
-  const model = vehicle.vehicle_model ?? vehicle.model;
-  const label = [year, make, model].filter(Boolean).join(' ');
-  return label || '-';
-};
-
-type LeadDraftComposer = {
-  channel: AiDraft['channel'];
-  subject?: string;
-  body: string;
-};
-
-const toRecord = (value: unknown): Record<string, unknown> =>
-  value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
-
-const readMetaString = (value: unknown) => (typeof value === 'string' ? value : '');
-
-const readMetaStringArray = (value: unknown) =>
-  Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
-
-const getLeadIntakeMetadata = (lead: Lead) => toRecord(lead.intake_metadata);
-
-const getLeadPreferredSummary = (lead: Lead) => readMetaString(getLeadIntakeMetadata(lead).preferredSummary);
-
-const getLeadIssueDetails = (lead: Lead) => readMetaString(getLeadIntakeMetadata(lead).issueDetails);
-
-const getLeadNotes = (lead: Lead) => readMetaString(getLeadIntakeMetadata(lead).notes);
-
-const getLeadPickupRequested = (lead: Lead) => Boolean(getLeadIntakeMetadata(lead).pickupRequested);
-
-const getLeadPickupAddressSummary = (lead: Lead) => {
-  const address = toRecord(getLeadIntakeMetadata(lead).pickupAddress);
-  return [address.addressLine1, address.city, address.province, address.postalCode]
-    .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
-    .join(', ');
-};
-
-const getLeadPhotoCount = (lead: Lead) => readMetaStringArray(getLeadIntakeMetadata(lead).assetPaths).length;
-
-const getLeadBookingReference = (lead: Lead) => readMetaString(getLeadIntakeMetadata(lead).bookingReference);
-
-const getLeadAiStaffNotes = (lead: Lead) =>
-  readMetaStringArray(getLeadIntakeMetadata(lead).aiStaffNotes);
-
-const buildLeadConversionNotes = (lead: Lead, serviceDisplay: string) => {
-  const lines = [
-    serviceDisplay !== '-' ? `Requested: ${serviceDisplay}` : '',
-    getLeadPreferredSummary(lead) ? `Preferred timing: ${getLeadPreferredSummary(lead)}` : '',
-    getLeadIssueDetails(lead) ? `Issue details: ${getLeadIssueDetails(lead)}` : '',
-    getLeadNotes(lead) ? `Customer notes: ${getLeadNotes(lead)}` : '',
-    getLeadPickupRequested(lead)
-      ? `Pickup requested${getLeadPickupAddressSummary(lead) ? ` | ${getLeadPickupAddressSummary(lead)}` : ''}`
-      : '',
-    getLeadBookingReference(lead) ? `Booking reference: ${getLeadBookingReference(lead)}` : '',
-  ].filter(Boolean);
-
-  return lines.join('\n');
-};
-
-const jobStatusLabel: Record<JobUiStatus, string> = {
-  scheduled: 'Scheduled',
-  completed: 'Completed',
-  cancelled: 'Cancelled',
-};
-
-const badgeClass = (status: string) => {
-  const classes: Record<string, string> = {
-    new_lead: 'bg-blue-50 text-blue-700 border-blue-200',
-    booked: 'bg-amber-50 text-amber-700 border-amber-200',
-    service_completed: 'bg-green-50 text-green-700 border-green-200',
-    closed_lost: 'bg-red-50 text-red-700 border-red-200',
-    scheduled: 'bg-amber-50 text-amber-700 border-amber-200',
-    completed: 'bg-green-50 text-green-700 border-green-200',
-    cancelled: 'bg-gray-100 text-gray-600 border-gray-200',
-    unpaid: 'bg-red-50 text-red-700 border-red-200',
-    paid: 'bg-green-50 text-green-700 border-green-200',
-  };
-  return classes[status] || 'bg-gray-100 text-gray-700 border-gray-200';
-};
-
-const StatusBadge: React.FC<{ status: string; label?: string }> = ({ status, label }) => (
-  <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${badgeClass(status)}`}>
-    {label || status}
-  </span>
-);
-
-const readAiFeatureState = (metadata: unknown, key: string): AiFeatureState | null => {
-  const value = toRecord(toRecord(metadata)[key]);
-  if (!Object.keys(value).length) return null;
-
+const presetRange = (p: SchedulePreset, timeZone: string) => {
+  const todayKey = getTimeZoneDateKey(new Date(), timeZone);
+  const startKey = p === 'tomorrow' ? shiftTimeZoneDateKey(todayKey, 1, timeZone) : todayKey;
+  const endKey =
+    p === 'today'
+      ? shiftTimeZoneDateKey(todayKey, 1, timeZone)
+      : p === 'tomorrow'
+        ? shiftTimeZoneDateKey(todayKey, 2, timeZone)
+        : p === 'this_week'
+          ? shiftTimeZoneDateKey(todayKey, 7, timeZone)
+          : shiftTimeZoneDateKey(todayKey, 8, timeZone);
   return {
-    feature: readMetaString(value.feature) as AiFeatureState['feature'],
-    summary: readMetaString(value.summary),
-    recommendations: Array.isArray(value.recommendations)
-      ? value.recommendations
-          .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object'))
-          .map((item) => {
-            const priority: AiFeatureState['recommendations'][number]['priority'] =
-              item.priority === 'high' || item.priority === 'low' ? item.priority : 'medium';
-            const kind: AiFeatureState['recommendations'][number]['kind'] =
-              item.kind === 'service' ||
-              item.kind === 'upsell' ||
-              item.kind === 'risk' ||
-              item.kind === 'prep' ||
-              item.kind === 'follow_up'
-                ? item.kind
-                : 'next_step';
-
-            return {
-              title: readMetaString(item.title),
-              detail: readMetaString(item.detail),
-              priority,
-              kind,
-            };
-          })
-          .filter((item) => item.title && item.detail)
-      : [],
-    missingInfo: readMetaStringArray(value.missingInfo),
-    drafts: Array.isArray(value.drafts)
-      ? value.drafts
-          .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object'))
-          .map((item) => {
-            const channel: AiDraft['channel'] =
-              item.channel === 'email' ||
-              item.channel === 'sms' ||
-              item.channel === 'whatsapp' ||
-              item.channel === 'internal'
-                ? item.channel
-                : 'internal';
-
-            return {
-              label: readMetaString(item.label) || 'Draft',
-              channel,
-              tone: readMetaString(item.tone) || 'neutral',
-              subject: readMetaString(item.subject) || undefined,
-              body: readMetaString(item.body),
-            };
-          })
-          .filter((draft) => draft.body)
-      : [],
-    confidence: typeof value.confidence === 'number' ? value.confidence : 0,
-    warnings: readMetaStringArray(value.warnings),
-    recommendedNextAction: readMetaString(value.recommendedNextAction) || undefined,
-    urgency:
-      value.urgency === 'high' || value.urgency === 'low' ? value.urgency : value.urgency === 'medium' ? 'medium' : undefined,
-    actions: Array.isArray(value.actions)
-      ? value.actions
-          .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object'))
-          .map((item) => {
-            const type: NonNullable<AiFeatureState['actions']>[number]['type'] =
-              item.type === 'update_lead_status' ||
-              item.type === 'set_lead_service_recommendation' ||
-              item.type === 'append_lead_note' ||
-              item.type === 'append_job_note'
-                ? item.type
-                : 'append_lead_note';
-
-            return {
-              type,
-              label: readMetaString(item.label) || 'Apply suggestion',
-              status: readMetaString(item.status) || undefined,
-              serviceCatalogId: readMetaString(item.serviceCatalogId) || undefined,
-              serviceType: readMetaString(item.serviceType) || undefined,
-              serviceAddonIds: readMetaStringArray(item.serviceAddonIds),
-              note: readMetaString(item.note) || undefined,
-            };
-          })
-      : [],
-    runId: readMetaString(value.runId),
-    promptVersion: readMetaString(value.promptVersion) || undefined,
-    status: readMetaString(value.status) as AiFeatureState['status'],
-    approvalStatus:
-      value.approvalStatus === 'applied' || value.approvalStatus === 'dismissed'
-        ? value.approvalStatus
-        : 'pending',
-    updatedAt: readMetaString(value.updatedAt),
-    appliedAt: readMetaString(value.appliedAt) || undefined,
-    dismissedAt: readMetaString(value.dismissedAt) || undefined,
+    dateFrom: localDateKeyToUtcRange(startKey, timeZone).start.toISOString(),
+    dateTo: localDateKeyToUtcRange(endKey, timeZone).start.toISOString(),
   };
 };
 
-const isFulfilled = <T,>(result: PromiseSettledResult<T>): result is PromiseFulfilledResult<T> =>
-  result.status === 'fulfilled';
-
-const settledErrorMessage = (result: PromiseSettledResult<unknown>) =>
-  result.status === 'rejected'
-    ? result.reason instanceof ApiError
-      ? result.reason.message
-      : result.reason instanceof Error
-        ? result.reason.message
-        : 'Failed to load dashboard data'
-    : null;
-
-const formatConfidence = (value?: number | null) =>
-  `${Math.round(Math.max(0, Math.min(1, Number(value || 0))) * 100)}%`;
-
-const exportCsv = (filename: string, rows: Array<Record<string, unknown>>) => {
-  if (!rows.length) return;
-  const headers = Object.keys(rows[0]);
-  const csv = [
-    headers.join(','),
-    ...rows.map((row) =>
-      headers
-        .map((header) => `"${String(row[header] ?? '').replace(/"/g, '""')}"`)
-        .join(',')
-    ),
-  ].join('\n');
-
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  link.click();
-  URL.revokeObjectURL(url);
+const fmtTime = (v?: string | null, timeZone = DEFAULT_APP_TIME_ZONE) => {
+  if (!v) return 'TBD'; const d = new Date(v); if (Number.isNaN(d.getTime())) return 'TBD';
+  return formatDateTimeInTimeZone(d, { hour: 'numeric', minute: '2-digit', hour12: true }, timeZone);
 };
+
+const fmtTimeRange = (s?: string | null, e?: string | null, timeZone = DEFAULT_APP_TIME_ZONE) => {
+  const a = fmtTime(s, timeZone), b = fmtTime(e, timeZone);
+  return a === 'TBD' ? 'Time TBD' : b !== 'TBD' ? `${a} � ${b}` : a;
+};
+
+const fmtDate = (v?: string | null, timeZone = DEFAULT_APP_TIME_ZONE) => {
+  if (!v) return '-'; const d = new Date(v); if (Number.isNaN(d.getTime())) return '-';
+  return formatDateTimeInTimeZone(d, { month: 'short', day: 'numeric', weekday: 'short' }, timeZone);
+};
+
+const fmtDateHeading = (v?: string | null, timeZone = DEFAULT_APP_TIME_ZONE) => {
+  if (!v) return 'Unscheduled'; const d = new Date(v); if (Number.isNaN(d.getTime())) return 'Unscheduled';
+  return formatDateTimeInTimeZone(d, { weekday: 'long', month: 'long', day: 'numeric' }, timeZone);
+};
+
+const fmtRelative = (v?: string | null) => {
+  if (!v) return '-'; const d = new Date(v); if (Number.isNaN(d.getTime())) return '-';
+  const h = Math.round((Date.now() - d.getTime()) / 3_600_000);
+  if (Math.abs(h) < 24) return h === 0 ? 'just now' : h > 0 ? `${h}h ago` : `in ${Math.abs(h)}h`;
+  const days = Math.round(h / 24);
+  return days > 0 ? `${days}d ago` : `in ${Math.abs(days)}d`;
+};
+
+const fmtDayShort = (v: string, timeZone = DEFAULT_APP_TIME_ZONE) => {
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? '-' : formatDateTimeInTimeZone(d, { weekday: 'short' }, timeZone);
+};
+const fmtDayNum = (v: string, timeZone = DEFAULT_APP_TIME_ZONE) => {
+  const parts = getTimeZoneParts(v, timeZone);
+  return parts?.day || '-';
+};
+const fmtDateTime = (v: string, timeZone = DEFAULT_APP_TIME_ZONE) => {
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return '-';
+  return formatDateTimeInTimeZone(d, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }, timeZone);
+};
+const calendarBlockTone = (source: CalendarBlockSource) =>
+  source === 'walk_in'
+    ? 'bg-amber-50/90 border-amber-200 text-amber-900'
+    : source === 'mobile'
+      ? 'bg-violet-50/90 border-violet-200 text-violet-900'
+      : source === 'support'
+        ? 'bg-sky-50/90 border-sky-200 text-sky-900'
+        : 'bg-neutral-100/95 border-neutral-300 text-neutral-700';
+const calendarBlockBadge = (source: CalendarBlockSource) =>
+  source === 'walk_in'
+    ? 'bg-amber-100 text-amber-800'
+    : source === 'mobile'
+      ? 'bg-violet-100 text-violet-800'
+      : source === 'support'
+        ? 'bg-sky-100 text-sky-800'
+        : 'bg-neutral-200 text-neutral-700';
+
+const currency = (v?: number | null) =>
+  new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD' }).format(Number(v || 0));
+
+const statusDot = (s: JobUiStatus) => s === 'completed' ? 'bg-emerald-400' : s === 'cancelled' ? 'bg-neutral-300' : 'bg-amber-400';
+const leadDot = (s?: LeadUiStatus) => s === 'booked' ? 'bg-emerald-400' : s === 'closed_lost' ? 'bg-neutral-300' : s === 'service_completed' ? 'bg-sky-400' : 'bg-amber-400';
+
+const calBlockColor = (s: JobUiStatus) =>
+  s === 'completed' ? 'bg-emerald-50 border-emerald-200/60 text-emerald-800'
+  : s === 'cancelled' ? 'bg-neutral-50 border-neutral-200/60 text-neutral-500'
+  : 'bg-[#0071e3]/[0.07] border-[#0071e3]/20 text-[#0071e3]';
+const calendarBlockLabel = (source: CalendarBlockSource) => calendarBlockSourceOptions.find((option) => option.value === source)?.label || 'Blocked time';
+
+const chatId = () => typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+const toRecord = (v: unknown): Record<string, unknown> => v && typeof v === 'object' ? (v as Record<string, unknown>) : {};
+const metaStr = (v: unknown) => typeof v === 'string' ? v : '';
+const metaStrArr = (v: unknown) => Array.isArray(v) ? v.filter((i): i is string => typeof i === 'string') : [];
+const leadMeta = (l: Lead) => toRecord(l.intake_metadata);
+const leadService = (l: Lead) => metaStr(leadMeta(l).preferredSummary);
+const leadIssue = (l: Lead) => metaStr(leadMeta(l).issueDetails);
+const leadNotes = (l: Lead) => metaStr(leadMeta(l).notes);
+const leadPhotos = (l: Lead) => metaStrArr(leadMeta(l).assetPaths).length;
+const leadPickup = (l: Lead) => Boolean(leadMeta(l).pickupRequested);
+const leadRef = (l: Lead) => metaStr(leadMeta(l).bookingReference);
+
+/* ?? Main Dashboard ?????????????????????????????????????????????????? */
 
 const Dashboard: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<DashboardTab>('overview');
+  const [view, setView] = useState<DashboardView>('schedule');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [auth, setAuth] = useState<AuthMeResponse | null>(null);
-  const [metrics, setMetrics] = useState<MetricsResponse>(emptyMetrics);
+
+  const [board, setBoard] = useState<ScheduleBoardResponse | null>(null);
   const [leads, setLeads] = useState<Lead[]>([]);
-  const [jobs, setJobs] = useState<ServiceJob[]>([]);
-  const [clients, setClients] = useState<ClientRecord[]>([]);
-  const [notifications, setNotifications] = useState<InAppNotification[]>([]);
-  const [aiRuns, setAiRuns] = useState<AiRun[]>([]);
-  const [reports, setReports] = useState<ReportsResponse | null>(null);
-  const [commandCenter, setCommandCenter] = useState<CommandCenterResponse | null>(null);
-  const [activityFeed, setActivityFeed] = useState<ActivityFeedResponse['items']>([]);
-  const [scheduleBoard, setScheduleBoard] = useState<ScheduleBoardResponse | null>(null);
   const [leadPagination, setLeadPagination] = useState<Pagination | null>(null);
-  const [jobPagination, setJobPagination] = useState<Pagination | null>(null);
-  const [clientPagination, setClientPagination] = useState<Pagination | null>(null);
+  const [notifications, setNotifications] = useState<InAppNotification[]>([]);
+  const [reports, setReports] = useState<ReportsResponse | null>(null);
+
+  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
-  const [selectedClientDetails, setSelectedClientDetails] = useState<ClientDetailsResponse | null>(null);
-  const [selectedScheduleJobId, setSelectedScheduleJobId] = useState<string | null>(null);
-  const [customerNotes, setCustomerNotes] = useState('');
-  const [leadForm, setLeadForm] = useState<LeadFormState>(emptyLeadForm);
-  const [jobForm, setJobForm] = useState<JobFormState>(emptyJobForm);
-  const [submittingLead, setSubmittingLead] = useState(false);
-  const [submittingJob, setSubmittingJob] = useState(false);
-  const [savingCustomer, setSavingCustomer] = useState(false);
-  const [aiBusyKey, setAiBusyKey] = useState<string | null>(null);
-  const [leadDraftComposer, setLeadDraftComposer] = useState<Record<string, LeadDraftComposer>>({});
-  const [dailyBrief, setDailyBrief] = useState<AiSuggestion | null>(null);
-  const [weeklyBrief, setWeeklyBrief] = useState<AiSuggestion | null>(null);
-  const [copiedDraftKey, setCopiedDraftKey] = useState<string | null>(null);
-  const [opsChatInput, setOpsChatInput] = useState('');
-  const [opsChatSubmitting, setOpsChatSubmitting] = useState(false);
-  const [opsChatMessages, setOpsChatMessages] = useState<OpsChatMessage[]>([initialOpsChatMessage]);
+  const [clientDetails, setClientDetails] = useState<CustomerWorkspaceResponse | null>(null);
+
   const [search, setSearch] = useState('');
-  const [lastRefreshedAt, setLastRefreshedAt] = useState<string | null>(null);
-  const [dashboardTheme, setDashboardTheme] = useState<DashboardTheme>(getInitialDashboardTheme);
-  const [showDashboardChrome, setShowDashboardChrome] = useState(true);
-  const [schedulePreset, setSchedulePreset] = useState<SchedulePreset>('this_week');
-  const [scheduleStatusFilter, setScheduleStatusFilter] = useState<'all' | JobUiStatus>('all');
-  const [schedulePaymentFilter, setSchedulePaymentFilter] = useState<'all' | JobPaymentStatus>('all');
-  const [scheduleBookingSourceFilter, setScheduleBookingSourceFilter] = useState<'all' | 'public' | 'ops'>('all');
-  const [schedulePickupFilter, setSchedulePickupFilter] = useState<'all' | 'pickup' | 'standard'>('all');
-  const [scheduleAssigneeFilter, setScheduleAssigneeFilter] = useState('all');
-  const [scheduleSearch, setScheduleSearch] = useState('');
-  const [scheduleViewMode, setScheduleViewMode] = useState<ScheduleViewMode>('board');
-  const [collapsedScheduleGroups, setCollapsedScheduleGroups] = useState<Record<string, boolean>>({});
-  const [scheduleLoading, setScheduleLoading] = useState(false);
+  const deferred = useDeferredValue(search);
+  const [preset, setPreset] = useState<SchedulePreset>('this_week');
+
+  const [modalOpen, setModalOpen] = useState(false);
+  const [convertLeadId, setConvertLeadId] = useState<string | null>(null);
+  const [form, setForm] = useState<BookingForm>(emptyForm);
+  const [submitting, setSubmitting] = useState(false);
+  const [blockModalOpen, setBlockModalOpen] = useState(false);
+  const [blockForm, setBlockForm] = useState<CalendarBlockForm>(defaultCalendarBlockForm(DEFAULT_APP_TIME_ZONE));
+  const [blockSubmitting, setBlockSubmitting] = useState(false);
+  const [deletingBlockId, setDeletingBlockId] = useState<string | null>(null);
+
+  const [copilotOpen, setCopilotOpen] = useState(false);
+  const [notifsOpen, setNotifsOpen] = useState(false);
+  const [customer360Open, setCustomer360Open] = useState(false);
+
+  const [chatMessages, setChatMessages] = useState<OpsChatMessage[]>([{
+    id: 'welcome', role: 'assistant',
+    content: 'Ask about scheduled services, customer context, and upcoming prep.',
+    sections: [{ title: 'You can ask', items: ['Booking order for today', 'Missing customer notes', 'Prep summary for upcoming services'] }],
+    followUpQuestions: [...copilotPrompts], mode: 'fallback',
+  }]);
+  const [chatInput, setChatInput] = useState('');
+  const [chatSending, setChatSending] = useState(false);
+  const [chatActionLoadingId, setChatActionLoadingId] = useState<string | null>(null);
+
+  const ready = useRef(false);
+  const bootstrapRetriedAfter401 = useRef(false);
+
   const { data: servicesCmsData } = useCmsPage('services', defaultServicesPageContent);
-  const servicesContent = useMemo(
-    () => adaptServicesContent(servicesCmsData),
-    [servicesCmsData]
+  const servicesContent = useMemo(() => adaptServicesContent(servicesCmsData), [servicesCmsData]);
+  const primaryOfferings = useMemo(() => getPrimaryOfferings(servicesContent), [servicesContent]);
+  const addOnOfferings = useMemo(() => getAddOnOfferings(servicesContent), [servicesContent]);
+  const groupedPrimary = useMemo(() => groupOfferingsByCategory(primaryOfferings), [primaryOfferings]);
+  const dashboardTimeZone = board?.timeZone || DEFAULT_APP_TIME_ZONE;
+
+  const resolveAddOns = useCallback(
+    (ids: string[]) => ids.map((id) => getOfferingById(servicesContent, id)).filter(Boolean) as ServiceOffering[],
+    [servicesContent],
   );
-  const primaryServiceOfferings = useMemo(
-    () => getPrimaryOfferings(servicesContent),
-    [servicesContent]
-  );
-  const addOnServiceOfferings = useMemo(
-    () => getAddOnOfferings(servicesContent),
-    [servicesContent]
-  );
-  const groupedPrimaryServiceOfferings = useMemo(
-    () => groupOfferingsByCategory(primaryServiceOfferings),
-    [primaryServiceOfferings]
-  );
-
-  const resolveSelectedAddOns = useCallback(
-    (serviceAddonIds: string[]) =>
-      serviceAddonIds
-        .map((id) => getOfferingById(servicesContent, id))
-        .filter(Boolean) as ServiceOffering[],
-    [servicesContent]
-  );
-
-  const buildCatalogServicePayload = useCallback(
-    (serviceCatalogId: string, serviceAddonIds: string[], customServiceType: string) => {
-      if (!serviceCatalogId || serviceCatalogId === 'custom') {
-        return {
-          serviceType: customServiceType.trim(),
-          serviceCatalogId: null,
-          serviceAddonIds: [] as string[],
-        };
-      }
-
-      const primaryOffering = getOfferingById(servicesContent, serviceCatalogId);
-      if (!primaryOffering) {
-        return {
-          serviceType: customServiceType.trim(),
-          serviceCatalogId: null,
-          serviceAddonIds: [] as string[],
-        };
-      }
-
-      const addOns = resolveSelectedAddOns(serviceAddonIds);
-      return {
-        serviceType: buildServiceLabel(primaryOffering, addOns, primaryOffering.title),
-        serviceCatalogId: primaryOffering.id,
-        serviceAddonIds: addOns.map((offering) => offering.id),
-      };
-    },
-    [resolveSelectedAddOns, servicesContent]
-  );
-
-  const getPrefillAmount = useCallback(
-    (serviceCatalogId: string, serviceAddonIds: string[]) => {
-      if (!serviceCatalogId || serviceCatalogId === 'custom') return '';
-
-      const primaryOffering = getOfferingById(servicesContent, serviceCatalogId);
-      if (!primaryOffering?.fixedPriceAmount) return '';
-
-      const addOns = resolveSelectedAddOns(serviceAddonIds);
-      if (addOns.some((offering) => typeof offering.fixedPriceAmount !== 'number')) return '';
-
-      const total =
-        primaryOffering.fixedPriceAmount +
-        addOns.reduce((sum, offering) => sum + Number(offering.fixedPriceAmount || 0), 0);
-
-      return String(total);
-    },
-    [resolveSelectedAddOns, servicesContent]
-  );
-
-  const syncLeadServiceSelection = useCallback(
-    (
-      updates: Partial<Pick<LeadFormState, 'serviceCatalogId' | 'serviceAddonIds' | 'customServiceType'>>
-    ) => {
-      setLeadForm((current) => {
-        const next = { ...current, ...updates };
-        const payload = buildCatalogServicePayload(
-          next.serviceCatalogId,
-          next.serviceAddonIds,
-          next.customServiceType
-        );
-        return {
-          ...next,
-          serviceType: payload.serviceType,
-        };
-      });
-    },
-    [buildCatalogServicePayload]
-  );
-
-  const syncJobServiceSelection = useCallback(
-    (
-      updates: Partial<Pick<JobFormState, 'serviceCatalogId' | 'serviceAddonIds' | 'customServiceType'>>
-    ) => {
-      setJobForm((current) => {
-        const next = { ...current, ...updates };
-        const payload = buildCatalogServicePayload(
-          next.serviceCatalogId,
-          next.serviceAddonIds,
-          next.customServiceType
-        );
-        return {
-          ...next,
-          serviceType: payload.serviceType,
-          estimatedAmount: getPrefillAmount(next.serviceCatalogId, next.serviceAddonIds),
-        };
-      });
-    },
-    [buildCatalogServicePayload, getPrefillAmount]
-  );
-
-  const selectedLead = useMemo(
-    () => leads.find((lead) => lead.id === selectedLeadId) || null,
-    [leads, selectedLeadId]
-  );
-
-  const selectedScheduleJob = useMemo(
-    () =>
-      scheduleBoard?.groups
-        .flatMap((group) => group.jobs)
-        .find((job) => job.id === selectedScheduleJobId) || null,
-    [scheduleBoard, selectedScheduleJobId]
-  );
-
-  useEffect(() => {
-    if (!scheduleBoard) return;
-    setCollapsedScheduleGroups((current) => {
-      const next: Record<string, boolean> = {};
-      scheduleBoard.groups.forEach((group) => {
-        next[group.key] = current[group.key] ?? false;
-      });
-      return next;
-    });
-  }, [scheduleBoard]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    window.localStorage.setItem(dashboardThemeStorageKey, dashboardTheme);
-  }, [dashboardTheme]);
 
   const getLeadServiceDisplay = useCallback(
-    (lead: Lead) =>
-      resolveServiceDisplay(
-        servicesContent,
-        lead.service_catalog_id,
-        lead.service_addon_ids,
-        lead.service_type
-      ),
-    [servicesContent]
+    (l: Lead) => resolveServiceDisplay(servicesContent, l.service_catalog_id, l.service_addon_ids, l.service_type),
+    [servicesContent],
   );
 
-  const getJobServiceDisplay = useCallback(
-    (job: ServiceJob) =>
-      resolveServiceDisplay(
-        servicesContent,
-        job.service_catalog_id,
-        job.service_addon_ids,
-        job.service_type
-      ),
-    [servicesContent]
-  );
+  const allJobs = useMemo(() => board?.groups.flatMap((g) => g.jobs) ?? [], [board]);
 
-  const getJobEstimatedAmount = useCallback(
-    (job: ServiceJob) => {
-      const storedAmount =
-        typeof job.estimated_amount === 'number' && Number.isFinite(job.estimated_amount)
-          ? job.estimated_amount
-          : null;
+  const filteredJobs = useMemo(() => {
+    const t = deferred.trim().toLowerCase();
+    if (!t) return allJobs;
+    return allJobs.filter((j) => [j.clientName, j.serviceType, j.vehicleLabel, j.notes].filter(Boolean).join(' ').toLowerCase().includes(t));
+  }, [allJobs, deferred]);
 
-      if (storedAmount && storedAmount > 0) return storedAmount;
+  const selectedJob = useMemo(() => filteredJobs.find((j) => j.id === selectedJobId) ?? filteredJobs[0] ?? null, [filteredJobs, selectedJobId]);
 
-      return (
-        estimateServiceAmount(
-          servicesContent,
-          job.service_catalog_id,
-          job.service_addon_ids,
-          job.service_type
-        ) || 0
-      );
-    },
-    [servicesContent]
-  );
+  const filteredLeads = useMemo(() => {
+    const t = deferred.trim().toLowerCase();
+    if (!t) return leads;
+    return leads.filter((l) => [l.name, l.email, l.phone, getLeadServiceDisplay(l)].filter(Boolean).join(' ').toLowerCase().includes(t));
+  }, [deferred, getLeadServiceDisplay, leads]);
 
-  const filteredClients = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    if (!term) return clients;
-    return clients.filter((client) =>
-      [client.name, client.phone, client.email, client.company_name]
-        .filter(Boolean)
-        .some((value) => String(value).toLowerCase().includes(term))
-    );
-  }, [clients, search]);
+  const selectedLead = useMemo(() => filteredLeads.find((l) => l.id === selectedLeadId) ?? filteredLeads[0] ?? null, [filteredLeads, selectedLeadId]);
 
-  const upcomingNotifications = useMemo(
-    () => notifications.filter((item) => !item.read_at),
-    [notifications]
-  );
+  const unreadNotifs = useMemo(() => notifications.filter((n) => !n.read_at), [notifications]);
 
-  const reviewRequiredRuns = useMemo(
-    () => aiRuns.filter((run) => run.status === 'review_required' || run.status === 'failed'),
-    [aiRuns]
-  );
+  /* ?? Data fetching ???????????????????????????????????????????????? */
 
-  const unpaidPaymentJobs = useMemo(
-    () =>
-      jobs
-        .filter((job) => (job.payment_status || 'unpaid') !== 'paid')
-        .sort((a, b) => Number(getJobEstimatedAmount(b)) - Number(getJobEstimatedAmount(a))),
-    [getJobEstimatedAmount, jobs]
-  );
-
-  const paidPaymentJobs = useMemo(
-    () =>
-      jobs
-        .filter((job) => (job.payment_status || 'unpaid') === 'paid')
-        .sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || '')),
-    [jobs]
-  );
-
-  const unreadInboxNotifications = useMemo(
-    () => notifications.filter((notification) => !notification.read_at),
-    [notifications]
-  );
-
-  const readInboxNotifications = useMemo(
-    () => notifications.filter((notification) => Boolean(notification.read_at)),
-    [notifications]
-  );
-
-  const tabCounts = useMemo(
-    () => ({
-      overview: commandCenter?.summary.urgentActionCount || 0,
-      leads: leadPagination?.total || leads.length,
-      jobs: scheduleBoard?.summary.totalJobs || jobPagination?.total || jobs.length,
-      customers: clientPagination?.total || clients.length,
-      payments: unpaidPaymentJobs.length,
-      notifications: upcomingNotifications.length + reviewRequiredRuns.length,
-      copilot: 0,
-      reports: 0,
-    }),
-    [
-      clientPagination?.total,
-      clients.length,
-      commandCenter?.summary.urgentActionCount,
-      jobPagination?.total,
-      jobs.length,
-      leadPagination?.total,
-      leads.length,
-      reviewRequiredRuns.length,
-      scheduleBoard?.summary.totalJobs,
-      unpaidPaymentJobs.length,
-      upcomingNotifications.length,
-    ]
-  );
-
-  const loadClientDetails = useCallback(async (clientId: string) => {
-    const data = await apiRequest<ClientDetailsResponse>(`/api/clients/${clientId}`);
-    setSelectedClientDetails(data);
-    setCustomerNotes(data.client.notes || '');
+  const fetchBoard = useCallback(async (p: SchedulePreset, q?: string) => {
+    const r = presetRange(p, DEFAULT_APP_TIME_ZONE);
+    const data = await apiRequest<ScheduleBoardResponse>(`/api/dashboard/schedule-board${qs({ dateFrom: r.dateFrom, dateTo: r.dateTo, search: q || undefined })}`);
+    setBoard(data);
+    setSelectedJobId((cur) => { if (cur && data.groups.some((g) => g.jobs.some((j) => j.id === cur))) return cur; return data.groups[0]?.jobs[0]?.id ?? null; });
   }, []);
 
-  const loadScheduleBoard = useCallback(async () => {
-    const range = getSchedulePresetRange(schedulePreset);
-    const data = await apiRequest<ScheduleBoardResponse>(
-      `/api/dashboard/schedule-board${qs({
-        dateFrom: range.dateFrom,
-        dateTo: range.dateTo,
-        status: scheduleStatusFilter,
-        paymentStatus: schedulePaymentFilter,
-        bookingSource: scheduleBookingSourceFilter,
-        pickupRequested:
-          schedulePickupFilter === 'pickup'
-            ? 'true'
-            : schedulePickupFilter === 'standard'
-              ? 'false'
-              : undefined,
-        assigneeId: scheduleAssigneeFilter,
-        search: scheduleSearch || undefined,
-      })}`
-    );
-    setScheduleBoard(data);
-    setSelectedScheduleJobId((current) => {
-      if (current && data.groups.some((group) => group.jobs.some((job) => job.id === current))) {
-        return current;
-      }
-      return data.groups[0]?.jobs[0]?.id || null;
-    });
-  }, [
-    scheduleAssigneeFilter,
-    scheduleBookingSourceFilter,
-    schedulePaymentFilter,
-    schedulePickupFilter,
-    schedulePreset,
-    scheduleSearch,
-    scheduleStatusFilter,
-  ]);
+  const fetchAux = useCallback(async () => {
+    const [authRes, leadsRes, notifsRes, reportsRes] = await Promise.all([
+      apiRequest<AuthMeResponse>('/api/auth/me'),
+      apiRequest<LeadsResponse>(`/api/leads${qs({ page: 1, pageSize: 50 })}`),
+      apiRequest<NotificationsResponse>('/api/notifications/in-app?limit=25'),
+      apiRequest<ReportsResponse>('/api/reports/summary'),
+    ]);
+    setAuth(authRes);
+    setLeads(leadsRes.leads);
+    setLeadPagination(leadsRes.pagination);
+    setNotifications(notifsRes.notifications);
+    setReports(reportsRes);
+    setSelectedLeadId((cur) => cur && leadsRes.leads.some((l) => l.id === cur) ? cur : leadsRes.leads[0]?.id ?? null);
+  }, []);
 
-  const loadDashboard = useCallback(async () => {
-    setError(null);
-    const authData = await apiRequest<AuthMeResponse>('/api/auth/me');
-    setAuth(authData);
+  const loadClient = useCallback(async (id: string) => {
+    const data = await apiRequest<CustomerWorkspaceResponse>(`/api/customers/${id}/workspace`);
+    setClientDetails(data);
+  }, []);
 
-    const [
-      metricsResult,
-      leadsResult,
-      jobsResult,
-      clientsResult,
-      notificationsResult,
-      reportsResult,
-      aiRunsResult,
-      commandCenterResult,
-      activityFeedResult,
-    ] =
-      await Promise.allSettled([
-        apiRequest<MetricsResponse>('/api/dashboard/metrics'),
-        apiRequest<LeadsResponse>(`/api/leads${qs({ page: 1, pageSize: 50 })}`),
-        apiRequest<JobsResponse>(`/api/service-jobs${qs({ page: 1, pageSize: 50 })}`),
-        apiRequest<ClientsResponse>(`/api/clients${qs({ page: 1, pageSize: 50 })}`),
-        apiRequest<NotificationsResponse>('/api/notifications/in-app?limit=25'),
-        apiRequest<ReportsResponse>('/api/reports/summary'),
-        apiRequest<AiRunsResponse>('/api/ai/runs?limit=30'),
-        apiRequest<CommandCenterResponse>('/api/dashboard/command-center'),
-        apiRequest<ActivityFeedResponse>('/api/dashboard/activity-feed'),
-      ]);
-
-    if (isFulfilled(metricsResult)) {
-      setMetrics(metricsResult.value);
-    }
-    if (isFulfilled(leadsResult)) {
-      setLeads(leadsResult.value.leads);
-      setLeadPagination(leadsResult.value.pagination);
-    }
-    if (isFulfilled(jobsResult)) {
-      setJobs(jobsResult.value.serviceJobs);
-      setJobPagination(jobsResult.value.pagination);
-    }
-    if (isFulfilled(clientsResult)) {
-      setClients(clientsResult.value.clients);
-      setClientPagination(clientsResult.value.pagination);
-      if (!selectedClientId && clientsResult.value.clients.length) {
-        setSelectedClientId(clientsResult.value.clients[0].id);
-      }
-    }
-    if (isFulfilled(notificationsResult)) {
-      setNotifications(notificationsResult.value.notifications);
-    }
-    if (isFulfilled(reportsResult)) {
-      setReports(reportsResult.value);
-    } else {
-      setReports(null);
-    }
-    if (isFulfilled(aiRunsResult)) {
-      setAiRuns(aiRunsResult.value.runs);
-    }
-    if (isFulfilled(commandCenterResult)) {
-      setCommandCenter(commandCenterResult.value);
-    } else {
-      setCommandCenter(null);
-    }
-    if (isFulfilled(activityFeedResult)) {
-      setActivityFeed(activityFeedResult.value.items);
-    } else {
-      setActivityFeed([]);
-    }
-
-    const partialFailures = [
-      metricsResult,
-      leadsResult,
-      jobsResult,
-      clientsResult,
-      notificationsResult,
-      reportsResult,
-      aiRunsResult,
-      commandCenterResult,
-      activityFeedResult,
-    ]
-      .map(settledErrorMessage)
-      .filter((message): message is string => Boolean(message));
-
-    if (partialFailures.length) {
-      setError(partialFailures[0]);
-    }
-    setLastRefreshedAt(new Date().toISOString());
-  }, [selectedClientId]);
-
-  useEffect(() => {
-    let mounted = true;
-
-    const run = async () => {
-      try {
-        if (!mounted) return;
-        setLoading(true);
-        await loadDashboard();
-      } catch (err) {
-        const message = err instanceof ApiError ? err.message : 'Failed to load dashboard';
-        if (mounted) setError(message);
-      } finally {
-        if (mounted) setLoading(false);
-      }
-    };
-
-    run();
-    return () => {
-      mounted = false;
-    };
-  }, [loadDashboard]);
-
-  useEffect(() => {
-    if (!selectedClientId) return;
-    loadClientDetails(selectedClientId).catch((err) => {
-      const message = err instanceof ApiError ? err.message : 'Failed to load customer details';
-      setError(message);
-    });
-  }, [loadClientDetails, selectedClientId]);
-
-  useEffect(() => {
-    let mounted = true;
-
-    const run = async () => {
-      try {
-        setScheduleLoading(true);
-        const data = await apiRequest<ScheduleBoardResponse>(
-          `/api/dashboard/schedule-board${qs({
-            dateFrom: getSchedulePresetRange(schedulePreset).dateFrom,
-            dateTo: getSchedulePresetRange(schedulePreset).dateTo,
-            status: scheduleStatusFilter,
-            paymentStatus: schedulePaymentFilter,
-            bookingSource: scheduleBookingSourceFilter,
-            pickupRequested:
-              schedulePickupFilter === 'pickup'
-                ? 'true'
-                : schedulePickupFilter === 'standard'
-                  ? 'false'
-                  : undefined,
-            assigneeId: scheduleAssigneeFilter,
-            search: scheduleSearch || undefined,
-          })}`
-        );
-        if (!mounted) return;
-        setScheduleBoard(data);
-        setSelectedScheduleJobId((current) => {
-          if (current && data.groups.some((group) => group.jobs.some((job) => job.id === current))) {
-            return current;
-          }
-          return data.groups[0]?.jobs[0]?.id || null;
-        });
-      } catch (err) {
-        const message = err instanceof ApiError ? err.message : 'Failed to load schedule board';
-        if (mounted) setError(message);
-      } finally {
-        if (mounted) setScheduleLoading(false);
-      }
-    };
-
-    run();
-    return () => {
-      mounted = false;
-    };
-  }, [
-    scheduleAssigneeFilter,
-    scheduleBookingSourceFilter,
-    schedulePaymentFilter,
-    schedulePickupFilter,
-    schedulePreset,
-    scheduleSearch,
-    scheduleStatusFilter,
-  ]);
-
-  const refreshAll = async () => {
+  const bootstrap = useCallback(async () => {
     try {
-      setRefreshing(true);
-      await loadDashboard();
-      await loadScheduleBoard();
-      if (selectedClientId) {
-        await loadClientDetails(selectedClientId);
-      }
-    } catch (err) {
-      const message = err instanceof ApiError ? err.message : 'Refresh failed';
-      setError(message);
-    } finally {
-      setRefreshing(false);
-    }
-  };
-
-  const prepareJobFromLead = (lead: Lead) => {
-    const matchedOffering =
-      getOfferingById(servicesContent, lead.service_catalog_id) || findOfferingByTitle(servicesContent, lead.service_type);
-    const serviceCatalogId = matchedOffering?.id || (lead.service_type ? 'custom' : '');
-    const serviceAddonIds = lead.service_addon_ids || [];
-    const customServiceType = matchedOffering ? '' : lead.service_type || '';
-    const serviceDisplay = getLeadServiceDisplay(lead);
-    const intakeNotes = buildLeadConversionNotes(lead, serviceDisplay);
-
-    setSelectedLeadId(lead.id);
-    setActiveTab('jobs');
-    setJobForm({
-      clientId: '',
-      clientName: lead.name,
-      serviceType: lead.service_type || '',
-      serviceCatalogId,
-      serviceAddonIds,
-      customServiceType,
-      scheduledAt: '',
-      vehicleMake: lead.vehicle_make || '',
-      vehicleModel: lead.vehicle_model || '',
-      vehicleYear: lead.vehicle_year ? String(lead.vehicle_year) : '',
-      estimatedAmount: getPrefillAmount(serviceCatalogId, serviceAddonIds),
-      paymentStatus: 'unpaid',
-      notes: intakeNotes,
-    });
-  };
-
-  const submitLead = async (event: React.FormEvent) => {
-    event.preventDefault();
-    try {
-      setSubmittingLead(true);
+      setLoading(true);
       setError(null);
-      const servicePayload = buildCatalogServicePayload(
-        leadForm.serviceCatalogId,
-        leadForm.serviceAddonIds,
-        leadForm.customServiceType
-      );
-      await apiRequest('/api/leads', {
+      await Promise.all([fetchAux(), fetchBoard('this_week')]);
+      bootstrapRetriedAfter401.current = false;
+    }
+    catch (e) {
+      if (e instanceof ApiError && e.status === 401 && !bootstrapRetriedAfter401.current) {
+        bootstrapRetriedAfter401.current = true;
+        setTimeout(() => {
+          void bootstrap();
+        }, 500);
+        return;
+      }
+      setError(e instanceof ApiError ? e.message : 'Failed to load dashboard');
+    }
+    finally { setLoading(false); ready.current = true; }
+  }, [fetchAux, fetchBoard]);
+
+  const refreshAll = useCallback(async () => {
+    try { setRefreshing(true); setError(null); await Promise.all([fetchAux(), fetchBoard(preset, deferred)]); }
+    catch (e) { setError(e instanceof ApiError ? e.message : 'Failed to refresh'); }
+    finally { setRefreshing(false); }
+  }, [deferred, fetchAux, fetchBoard, preset]);
+
+  useEffect(() => { if (!ready.current) void bootstrap(); }, [bootstrap]);
+
+  useEffect(() => {
+    if (!ready.current) return;
+    setRefreshing(true);
+    fetchBoard(preset, deferred).catch((e) => setError(e instanceof ApiError ? e.message : 'Failed to refresh schedule')).finally(() => setRefreshing(false));
+  }, [preset, deferred, fetchBoard]);
+
+  useEffect(() => {
+    if (!selectedJob?.clientId) { setSelectedClientId(null); setClientDetails(null); return; }
+    if (selectedJob.clientId !== selectedClientId) {
+      setSelectedClientId(selectedJob.clientId);
+      loadClient(selectedJob.clientId).catch(() => setClientDetails(null));
+    }
+  }, [selectedJob?.clientId, selectedJob?.id, selectedClientId, loadClient]);
+
+  /* ?? Copilot ?????????????????????????????????????????????????????? */
+
+  const sendChat = async (text?: string) => {
+    const q = (text || chatInput).trim(); if (!q) return;
+    if (!text) setChatInput('');
+    setChatMessages((m) => [...m, { id: chatId(), role: 'user', content: q }]);
+    try {
+      setChatSending(true);
+      const res = await apiRequest<{
+        answer: string;
+        sections: Array<{ title: string; items: string[] }>;
+        supportingFacts: string[];
+        followUpQuestions: string[];
+        mode: 'ai' | 'fallback';
+        warning?: string | null;
+        actionProposal?: OpsChatMessage['actionProposal'];
+      }>('/api/ai/chat', { method: 'POST', body: JSON.stringify({ question: q }) });
+      setChatMessages((m) => [...m, { id: chatId(), role: 'assistant', content: res.answer, sections: res.sections, supportingFacts: res.supportingFacts, followUpQuestions: res.followUpQuestions, mode: res.mode, warning: res.warning ?? null, actionProposal: res.actionProposal ?? null }]);
+    } catch {
+      setChatMessages((m) => [...m, { id: chatId(), role: 'assistant', content: 'I could not answer that right now.', sections: [{ title: 'Status', items: ['The AI assistant is temporarily unavailable.'] }], mode: 'fallback', warning: 'The AI assistant is temporarily unavailable.' }]);
+    } finally { setChatSending(false); }
+  };
+
+  const confirmChatProposal = async (messageId: string) => {
+    const proposal = chatMessages.find((message) => message.id === messageId)?.actionProposal;
+    if (!proposal || proposal.status !== 'pending_confirmation') return;
+    try {
+      setChatActionLoadingId(messageId);
+      setError(null);
+      await apiRequest('/api/dashboard/calendar-blocks', {
         method: 'POST',
         body: JSON.stringify({
-          name: leadForm.name,
-          phone: leadForm.phone,
-          email: leadForm.email || undefined,
-          serviceType: servicePayload.serviceType,
-          serviceCatalogId: servicePayload.serviceCatalogId,
-          serviceAddonIds: servicePayload.serviceAddonIds,
-          sourcePage: 'dashboard',
-          status: leadForm.status,
-          vehicleMake: leadForm.vehicleMake || null,
-          vehicleModel: leadForm.vehicleModel || null,
-          vehicleYear: leadForm.vehicleYear ? Number(leadForm.vehicleYear) : null,
+          startAt: proposal.startAt,
+          endAt: proposal.endAt,
+          source: proposal.source,
+          title: proposal.title,
+          notes: proposal.notes || undefined,
         }),
       });
-      setLeadForm(emptyLeadForm);
-      await refreshAll();
-      setActiveTab('leads');
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to create lead');
-    } finally {
-      setSubmittingLead(false);
-    }
-  };
-
-  const updateLeadStatus = async (leadId: string, status: LeadUiStatus) => {
-    try {
-      await apiRequest(`/api/leads/${leadId}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ status }),
-      });
-      await refreshAll();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to update lead');
-    }
-  };
-
-  const submitJob = async (event: React.FormEvent) => {
-    event.preventDefault();
-    try {
-      setSubmittingJob(true);
-      setError(null);
-      const jobServicePayload = buildCatalogServicePayload(
-        jobForm.serviceCatalogId,
-        jobForm.serviceAddonIds,
-        jobForm.customServiceType
-      );
-
-      if (selectedLead) {
-        const selectedLeadServiceDisplay = getLeadServiceDisplay(selectedLead);
-        const selectedLeadNotes = buildLeadConversionNotes(selectedLead, selectedLeadServiceDisplay);
-        await apiRequest(`/api/leads/${selectedLead.id}/convert`, {
-          method: 'POST',
-          body: JSON.stringify({
-            client: {
-              name: selectedLead.name,
-              email: selectedLead.email || undefined,
-              phone: selectedLead.phone || undefined,
-              notes: selectedLeadNotes || undefined,
-            },
-            serviceJob: {
-              clientName: jobForm.clientName || selectedLead.name,
-              serviceType: jobServicePayload.serviceType || selectedLead.service_type || 'Detailing',
-              serviceCatalogId: jobServicePayload.serviceCatalogId,
-              serviceAddonIds: jobServicePayload.serviceAddonIds,
-              status: 'scheduled',
-              scheduledAt: jobForm.scheduledAt ? new Date(jobForm.scheduledAt).toISOString() : null,
-              notes: jobForm.notes || null,
-              vehicleMake: jobForm.vehicleMake || null,
-              vehicleModel: jobForm.vehicleModel || null,
-              vehicleYear: jobForm.vehicleYear ? Number(jobForm.vehicleYear) : null,
-              estimatedAmount: jobForm.estimatedAmount ? Number(jobForm.estimatedAmount) : 0,
-              paymentStatus: jobForm.paymentStatus,
-            },
-          }),
-        });
-        setSelectedLeadId(null);
-      } else {
-        await apiRequest('/api/service-jobs', {
-          method: 'POST',
-          body: JSON.stringify({
-            clientId: jobForm.clientId || null,
-            clientName: jobForm.clientName,
-            serviceType: jobServicePayload.serviceType,
-            serviceCatalogId: jobServicePayload.serviceCatalogId,
-            serviceAddonIds: jobServicePayload.serviceAddonIds,
-            status: 'scheduled',
-            scheduledAt: jobForm.scheduledAt ? new Date(jobForm.scheduledAt).toISOString() : null,
-            vehicleMake: jobForm.vehicleMake || null,
-            vehicleModel: jobForm.vehicleModel || null,
-            vehicleYear: jobForm.vehicleYear ? Number(jobForm.vehicleYear) : null,
-            estimatedAmount: jobForm.estimatedAmount ? Number(jobForm.estimatedAmount) : 0,
-            paymentStatus: jobForm.paymentStatus,
-            notes: jobForm.notes || null,
-          }),
-        });
-      }
-
-      setJobForm(emptyJobForm);
-      await refreshAll();
-      setActiveTab('jobs');
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to save appointment');
-    } finally {
-      setSubmittingJob(false);
-    }
-  };
-
-  const updateJob = async (jobId: string, updates: Partial<{ status: JobUiStatus; paymentStatus: JobPaymentStatus }>) => {
-    try {
-      await apiRequest('/api/service-jobs', {
-        method: 'PATCH',
-        body: JSON.stringify({
-          id: jobId,
-          status: updates.status,
-          paymentStatus: updates.paymentStatus,
-        }),
-      });
-      await refreshAll();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to update job');
-    }
-  };
-
-  const saveCustomerNotes = async () => {
-    if (!selectedClientId) return;
-    try {
-      setSavingCustomer(true);
-      await apiRequest(`/api/clients/${selectedClientId}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ notes: customerNotes }),
-      });
-      await refreshAll();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to save customer');
-    } finally {
-      setSavingCustomer(false);
-    }
-  };
-
-  const markNotificationRead = async (notificationId: string) => {
-    try {
-      await apiRequest(`/api/notifications/in-app/${notificationId}/read`, { method: 'PATCH' });
-      await refreshAll();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to mark notification as read');
-    }
-  };
-
-  const runLeadCopilot = async (leadId: string) => {
-    try {
-      setAiBusyKey(`lead-copilot:${leadId}`);
-      setError(null);
-      await apiRequest<AiSuggestionResponse>(`/api/ai/leads/${leadId}/copilot`, {
-        method: 'POST',
-        body: JSON.stringify({}),
-      });
-      await refreshAll();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to generate AI copilot summary');
-    } finally {
-      setAiBusyKey(null);
-    }
-  };
-
-  const runLeadReplyDraft = async (leadId: string) => {
-    try {
-      setAiBusyKey(`lead-reply:${leadId}`);
-      setError(null);
-      const response = await apiRequest<AiSuggestionResponse>(`/api/ai/leads/${leadId}/reply-draft`, {
-        method: 'POST',
-        body: JSON.stringify({}),
-      });
-      const preferredDraft = response.suggestion.drafts.find((draft) => draft.channel === 'email') || response.suggestion.drafts[0];
-      if (preferredDraft) {
-        setLeadDraftComposer((current) => ({
-          ...current,
-          [leadId]: {
-            channel: preferredDraft.channel,
-            subject: preferredDraft.subject,
-            body: preferredDraft.body,
-          },
-        }));
-      }
-      await refreshAll();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to generate AI reply draft');
-    } finally {
-      setAiBusyKey(null);
-    }
-  };
-
-  const runJobWorkBrief = async (jobId: string) => {
-    try {
-      setAiBusyKey(`job-brief:${jobId}`);
-      setError(null);
-      await apiRequest<AiSuggestionResponse>(`/api/ai/jobs/${jobId}/work-brief`, {
-        method: 'POST',
-        body: JSON.stringify({}),
-      });
-      await refreshAll();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to generate job work brief');
-    } finally {
-      setAiBusyKey(null);
-    }
-  };
-
-  const runJobAftercareDraft = async (jobId: string) => {
-    try {
-      setAiBusyKey(`job-aftercare:${jobId}`);
-      setError(null);
-      await apiRequest<AiSuggestionResponse>(`/api/ai/jobs/${jobId}/aftercare-draft`, {
-        method: 'POST',
-        body: JSON.stringify({}),
-      });
-      await refreshAll();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to generate aftercare draft');
-    } finally {
-      setAiBusyKey(null);
-    }
-  };
-
-  const runManagerBrief = async (scope: 'daily' | 'weekly') => {
-    try {
-      setAiBusyKey(`manager-brief:${scope}`);
-      setError(null);
-      const response = await apiRequest<AiSuggestionResponse>('/api/ai/daily-brief', {
-        method: 'POST',
-        body: JSON.stringify({ scope }),
-      });
-      if (scope === 'daily') {
-        setDailyBrief(response.suggestion);
-      } else {
-        setWeeklyBrief(response.suggestion);
-      }
-      await refreshAll();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to generate manager brief');
-    } finally {
-      setAiBusyKey(null);
-    }
-  };
-
-  const applyAiRun = async (runId: string, actionIndex = 0) => {
-    try {
-      setAiBusyKey(`apply-run:${runId}:${actionIndex}`);
-      setError(null);
-      await apiRequest(`/api/ai/runs/${runId}/apply`, {
-        method: 'POST',
-        body: JSON.stringify({ actionIndex }),
-      });
-      await refreshAll();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to apply AI suggestion');
-    } finally {
-      setAiBusyKey(null);
-    }
-  };
-
-  const dismissAiRunAction = async (runId: string) => {
-    try {
-      setAiBusyKey(`dismiss-run:${runId}`);
-      setError(null);
-      await apiRequest(`/api/ai/runs/${runId}/dismiss`, {
-        method: 'POST',
-        body: JSON.stringify({}),
-      });
-      await refreshAll();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to dismiss AI run');
-    } finally {
-      setAiBusyKey(null);
-    }
-  };
-
-  const copyDraftToClipboard = async (leadId: string) => {
-    const draft = leadDraftComposer[leadId];
-    if (!draft?.body || !navigator.clipboard) return;
-    try {
-      await navigator.clipboard.writeText(
-        draft.subject ? `Subject: ${draft.subject}\n\n${draft.body}` : draft.body
-      );
-      setCopiedDraftKey(leadId);
-      window.setTimeout(() => setCopiedDraftKey((current) => (current === leadId ? null : current)), 2000);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to copy draft');
-    }
-  };
-
-  const submitOpsChatQuestion = async (questionOverride?: string) => {
-    const question = (questionOverride ?? opsChatInput).trim();
-    if (!question || opsChatSubmitting) return;
-
-    const userMessage: OpsChatMessage = {
-      id: createOpsChatMessageId(),
-      role: 'user',
-      content: question,
-    };
-
-    const history = opsChatMessages
-      .slice(-6)
-      .map(({ role, content }) => ({ role, content }));
-
-    setOpsChatSubmitting(true);
-    setError(null);
-    setOpsChatMessages((current) => [...current, userMessage]);
-    setOpsChatInput('');
-
-    try {
-      const response = await apiRequest<OpsChatResponse>('/api/ai/chat', {
-        method: 'POST',
-        body: JSON.stringify({ question, history }),
-      });
-
-      setOpsChatMessages((current) => [
-        ...current,
+      setChatMessages((messages) => [
+        ...messages.map((message) =>
+          message.id === messageId && message.actionProposal
+            ? { ...message, actionProposal: { ...message.actionProposal, status: 'confirmed' as const } }
+            : message
+        ),
         {
-          id: createOpsChatMessageId(),
+          id: chatId(),
           role: 'assistant',
-          content: response.answer,
-          supportingFacts: response.supportingFacts,
-          followUpQuestions: response.followUpQuestions,
-          mode: response.mode,
-          warning: response.warning || null,
-        },
-      ]);
-    } catch (err) {
-      const message = err instanceof ApiError ? err.message : 'Failed to ask ops copilot';
-      setError(message);
-      setOpsChatMessages((current) => [
-        ...current,
-        {
-          id: createOpsChatMessageId(),
-          role: 'assistant',
-          content:
-            'I could not answer that question right now. Refresh the dashboard data and try again.',
-          supportingFacts: [message],
-          followUpQuestions: [],
+          content: `Blocked time saved for ${fmtDateTime(proposal.startAt, dashboardTimeZone)} to ${fmtDateTime(proposal.endAt, dashboardTimeZone)}.`,
+          sections: [{ title: 'Saved', items: [`${proposal.title} is now blocking public bookings during that time.`] }],
           mode: 'fallback',
-          warning: message,
         },
       ]);
+      await refreshAll();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Failed to save calendar block');
     } finally {
-      setOpsChatSubmitting(false);
+      setChatActionLoadingId(null);
     }
   };
 
-  const openSchedulePreset = (preset: SchedulePreset, extras?: Partial<{
-    status: 'all' | JobUiStatus;
-    paymentStatus: 'all' | JobPaymentStatus;
-    bookingSource: 'all' | 'public' | 'ops';
-    pickup: 'all' | 'pickup' | 'standard';
-  }>) => {
-    setActiveTab('jobs');
-    setSchedulePreset(preset);
-    if (extras?.status) setScheduleStatusFilter(extras.status);
-    if (extras?.paymentStatus) setSchedulePaymentFilter(extras.paymentStatus);
-    if (extras?.bookingSource) setScheduleBookingSourceFilter(extras.bookingSource);
-    if (extras?.pickup) setSchedulePickupFilter(extras.pickup);
+  const cancelChatProposal = (messageId: string) => {
+    setChatMessages((messages) =>
+      messages.map((message) =>
+        message.id === messageId && message.actionProposal
+          ? { ...message, actionProposal: { ...message.actionProposal, status: 'cancelled' as const } }
+          : message
+      )
+    );
   };
 
-  const handleCommandCenterAction = (action: CommandCenterResponse['urgentActions'][number]) => {
-    if (action.kind === 'lead') {
-      const lead = leads.find((item) => item.id === action.targetId);
-      setActiveTab('leads');
-      if (lead) {
-        prepareJobFromLead(lead);
+  /* ?? Booking ?????????????????????????????????????????????????????? */
+
+  const openNewBooking = () => { setConvertLeadId(null); setForm({ ...emptyForm, clientId: selectedJob?.clientId || '', clientName: clientDetails?.client.name || selectedJob?.clientName || '' }); setModalOpen(true); };
+
+  const openConvertLead = (lead: Lead) => {
+    const matched = getOfferingById(servicesContent, lead.service_catalog_id) || findOfferingByTitle(servicesContent, lead.service_type);
+    setConvertLeadId(lead.id);
+    setForm({
+      ...emptyForm, clientName: lead.name,
+      serviceCatalogId: matched?.id || (lead.service_type ? 'custom' : ''),
+      serviceAddonIds: lead.service_addon_ids || [],
+      customServiceType: matched ? '' : lead.service_type || '',
+      vehicleMake: lead.vehicle_make || '', vehicleModel: lead.vehicle_model || '',
+      vehicleYear: lead.vehicle_year ? String(lead.vehicle_year) : '',
+      notes: [getLeadServiceDisplay(lead), leadService(lead) ? `Preferred: ${leadService(lead)}` : '', leadIssue(lead) ? `Issue: ${leadIssue(lead)}` : '', leadNotes(lead) ? `Notes: ${leadNotes(lead)}` : ''].filter(Boolean).join('\n'),
+    });
+    setModalOpen(true);
+    setView('schedule');
+  };
+
+  const submitBooking = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      setSubmitting(true); setError(null);
+      const primary = form.serviceCatalogId && form.serviceCatalogId !== 'custom' ? getOfferingById(servicesContent, form.serviceCatalogId) : null;
+      const addOns = resolveAddOns(form.serviceAddonIds);
+      const svcType = primary ? buildServiceLabel(primary, addOns, primary.title) : form.customServiceType.trim() || form.clientName;
+      const svcCatalogId = primary?.id ?? null;
+      const svcAddonIds = primary ? addOns.map((a) => a.id) : [];
+
+      if (convertLeadId) {
+        const lead = leads.find((l) => l.id === convertLeadId);
+        if (!lead) throw new Error('Lead not found');
+        await apiRequest(`/api/leads/${convertLeadId}/convert`, { method: 'POST', body: JSON.stringify({
+          client: { name: lead.name, email: lead.email || undefined, phone: lead.phone || undefined },
+          serviceJob: { clientName: form.clientName || lead.name, serviceType: svcType, serviceCatalogId: svcCatalogId, serviceAddonIds: svcAddonIds, status: 'scheduled', scheduledAt: form.scheduledAt ? dateTimeInputToUtcIso(form.scheduledAt, dashboardTimeZone) : null, notes: form.notes || null, vehicleMake: form.vehicleMake || null, vehicleModel: form.vehicleModel || null, vehicleYear: form.vehicleYear ? Number(form.vehicleYear) : null, estimatedAmount: form.estimatedAmount ? Number(form.estimatedAmount) : 0, paymentStatus: 'unpaid' },
+        }) });
+      } else {
+        await apiRequest('/api/service-jobs', { method: 'POST', body: JSON.stringify({ clientId: form.clientId || null, clientName: form.clientName, serviceType: svcType, serviceCatalogId: svcCatalogId, serviceAddonIds: svcAddonIds, status: 'scheduled', scheduledAt: form.scheduledAt ? dateTimeInputToUtcIso(form.scheduledAt, dashboardTimeZone) : null, vehicleMake: form.vehicleMake || null, vehicleModel: form.vehicleModel || null, vehicleYear: form.vehicleYear ? Number(form.vehicleYear) : null, estimatedAmount: form.estimatedAmount ? Number(form.estimatedAmount) : 0, paymentStatus: 'unpaid', notes: form.notes || null }) });
       }
-      return;
-    }
+      setModalOpen(false); setConvertLeadId(null); setForm(emptyForm); await refreshAll();
+    } catch (err) { setError(err instanceof ApiError ? err.message : 'Failed to save booking'); }
+    finally { setSubmitting(false); }
+  };
 
-    if (action.kind === 'job') {
-      setActiveTab('jobs');
-      setSelectedScheduleJobId(action.targetId);
-      return;
-    }
+  const updateFormService = (updates: Partial<Pick<BookingForm, 'serviceCatalogId' | 'serviceAddonIds' | 'customServiceType'>>) => {
+    setForm((f) => {
+      const next = { ...f, ...updates };
+      const p = next.serviceCatalogId && next.serviceCatalogId !== 'custom' ? getOfferingById(servicesContent, next.serviceCatalogId) : null;
+      if (p?.fixedPriceAmount) {
+        const addOns = resolveAddOns(next.serviceAddonIds);
+        const total = p.fixedPriceAmount + addOns.reduce((s, a) => s + Number(a.fixedPriceAmount || 0), 0);
+        next.estimatedAmount = String(total);
+      } else { next.estimatedAmount = ''; }
+      return next;
+    });
+  };
 
-    if (action.kind === 'notification') {
-      void markNotificationRead(action.targetId);
-      return;
-    }
+  const openBlockModal = (seed?: Partial<CalendarBlockForm>) => {
+    setBlockForm({ ...defaultCalendarBlockForm(dashboardTimeZone), ...seed });
+    setBlockModalOpen(true);
+  };
 
-    if (action.kind === 'ai') {
-      setActiveTab('notifications');
+  const submitCalendarBlock = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      setBlockSubmitting(true);
+      setError(null);
+      const startLocal = parseDateTimeInputValue(blockForm.startAt);
+      const endLocal = parseDateTimeInputValue(blockForm.endAt);
+      if (!startLocal || !endLocal) {
+        throw new Error('Choose a valid Toronto start and end time.');
+      }
+      await apiRequest('/api/dashboard/calendar-blocks', {
+        method: 'POST',
+        body: JSON.stringify({
+          startAt: dateTimeInputToUtcIso(blockForm.startAt, dashboardTimeZone),
+          endAt: dateTimeInputToUtcIso(blockForm.endAt, dashboardTimeZone),
+          startDateKey: startLocal.dateKey,
+          startMinutes: startLocal.totalMinutes,
+          endDateKey: endLocal.dateKey,
+          endMinutes: endLocal.totalMinutes,
+          source: blockForm.source,
+          title: blockForm.title.trim(),
+          notes: blockForm.notes.trim() || undefined,
+        }),
+      });
+      setBlockModalOpen(false);
+      await refreshAll();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Failed to save blocked time');
+    } finally {
+      setBlockSubmitting(false);
     }
   };
 
-  const toggleScheduleGroup = useCallback((groupKey: string) => {
-    setCollapsedScheduleGroups((current) => ({
-      ...current,
-      [groupKey]: !current[groupKey],
-    }));
-  }, []);
+  const deleteCalendarBlock = async (id: string) => {
+    try {
+      setDeletingBlockId(id);
+      setError(null);
+      await apiRequest(`/api/dashboard/calendar-blocks${qs({ id })}`, { method: 'DELETE' });
+      await refreshAll();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Failed to remove blocked time');
+    } finally {
+      setDeletingBlockId(null);
+    }
+  };
 
-  const setAllScheduleGroupsCollapsed = useCallback(
-    (collapsed: boolean) => {
-      setCollapsedScheduleGroups(
-        (scheduleBoard?.groups || []).reduce<Record<string, boolean>>((accumulator, group) => {
-          accumulator[group.key] = collapsed;
-          return accumulator;
-        }, {})
-      );
-    },
-    [scheduleBoard]
-  );
-
-  const sortedJobs = useMemo(
-    () =>
-      [...jobs]
-        .filter((job) => job.ui_status !== 'cancelled')
-        .sort((a, b) => (a.scheduled_at || '').localeCompare(b.scheduled_at || '')),
-    [jobs]
-  );
-
-  const isDarkMode = dashboardTheme === 'dark';
+  /* ?? Render ??????????????????????????????????????????????????????? */
 
   return (
-    <AuthGate title="Operations Dashboard">
-      <div className={`dashboard-shell mx-auto max-w-[92rem] space-y-6 px-4 py-6 sm:px-6 lg:px-8 ${isDarkMode ? 'dashboard-shell--dark' : ''}`}>
-        <div className="dashboard-header sticky top-3 z-20 space-y-4 rounded-[32px] border border-neutral-200/80 bg-[linear-gradient(135deg,rgba(255,255,255,0.98)_0%,rgba(255,249,244,0.96)_38%,rgba(248,250,252,0.98)_100%)] p-5 shadow-[0_24px_90px_rgba(15,23,42,0.10)] backdrop-blur">
-          {showDashboardChrome ? (
-            <>
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.22em] text-brand-mclaren">Internal Operations</p>
-                  <h1 className="mt-2 font-display text-4xl font-semibold uppercase text-brand-black">Service Dashboard</h1>
-                  <p className="mt-3 max-w-2xl text-sm leading-6 text-gray-600">
-                    Command center for intake, scheduling, customer history, payment follow-up, AI review, and day-of-service execution.
-                  </p>
-                </div>
-                <div className="flex flex-wrap items-center gap-3">
-                  <div className="dashboard-header-card rounded-2xl border border-white/80 bg-white/85 px-4 py-3 text-sm shadow-sm">
-                    <div className="font-semibold text-brand-black">{auth?.email || 'Signed in'}</div>
-                    <div className="text-gray-500">Role: {auth?.role || '-'}</div>
-                  </div>
-                  <div className="dashboard-header-card rounded-2xl border border-white/80 bg-white/85 px-4 py-3 text-sm shadow-sm">
-                    <div className="font-semibold text-brand-black">{lastRefreshedAt ? fmtTime(lastRefreshedAt) : 'Not synced yet'}</div>
-                    <div className="text-gray-500">Last refresh</div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setDashboardTheme((current) => (current === 'dark' ? 'light' : 'dark'))}
-                    className="dashboard-theme-toggle inline-flex items-center gap-2 rounded-2xl border border-neutral-200 px-4 py-3 text-sm font-semibold text-gray-700 transition hover:border-brand-black hover:text-brand-black"
-                  >
-                    {isDarkMode ? <SunMedium className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-                    {isDarkMode ? 'Light mode' : 'Dark mode'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab('leads')}
-                    className="inline-flex items-center gap-2 rounded-2xl border border-neutral-200 px-4 py-3 text-sm font-semibold text-gray-700 transition hover:border-brand-mclaren hover:text-brand-mclaren"
-                  >
-                    <Users className="h-4 w-4" />
-                    New lead
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab('copilot')}
-                    className="inline-flex items-center gap-2 rounded-2xl border border-neutral-200 px-4 py-3 text-sm font-semibold text-gray-700 transition hover:border-brand-mclaren hover:text-brand-mclaren"
-                  >
-                    <Bot className="h-4 w-4" />
-                    Open copilot
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowDashboardChrome(false)}
-                    className="inline-flex items-center gap-2 rounded-2xl border border-neutral-200 px-4 py-3 text-sm font-semibold text-gray-700 transition hover:border-brand-black hover:text-brand-black"
-                  >
-                    <ChevronUp className="h-4 w-4" />
-                    Hide bar
-                  </button>
-                  <button
-                    type="button"
-                    onClick={refreshAll}
-                    className="inline-flex items-center gap-2 rounded-2xl bg-brand-mclaren px-4 py-3 text-sm font-semibold text-white transition hover:bg-brand-mclaren-dark"
-                  >
-                    <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-                    Refresh
-                  </button>
-                </div>
-              </div>
+    <AuthGate title="Dashboard">
+      <div className="min-h-screen bg-[#f5f5f7]">
+        <div className="mx-auto max-w-[90rem] px-5 py-6 lg:px-8">
 
-              <div className="grid gap-3 lg:grid-cols-3">
-                <InsightCard
-                  eyebrow="Today"
-                  title={`${metrics.jobsScheduledToday} scheduled ${metrics.jobsScheduledToday === 1 ? 'job' : 'jobs'}`}
-                  body={
-                    <>
-                      <span className="font-semibold text-brand-black">{metrics.activeCustomers}</span> active customers are in service, and
-                      <span className="font-semibold text-brand-black"> {metrics.newCustomersOrLeadsToday}</span> new leads or customers came in today.
-                    </>
-                  }
-                  detail="Open today's schedule"
-                  onClick={() => openSchedulePreset('today', { status: 'all' })}
-                />
-                <InsightCard
-                  eyebrow="Attention Queue"
-                  title={`${commandCenter?.summary.urgentActionCount || 0} items need attention`}
-                  body={
-                    <>
-                      <span className="font-semibold text-brand-black">{commandCenter?.summary.openRequestCount || 0}</span> booking requests are still open,
-                      <span className="font-semibold text-brand-black"> {metrics.unreadNotifications}</span> notifications are unread, and
-                      <span className="font-semibold text-brand-black"> {commandCenter?.summary.aiReviewCount || reviewRequiredRuns.length}</span> AI items still need review.
-                    </>
-                  }
-                  detail="Go to daily overview"
-                  onClick={() => setActiveTab('overview')}
-                />
-                <InsightCard
-                  eyebrow="Revenue Outlook"
-                  title={currency(metrics.expectedRevenueToday)}
-                  body={
-                    <>
-                      Today's expected revenue is shown above, while the booked pipeline currently sits at
-                      <span className="font-semibold text-brand-black"> {currency(metrics.expectedRevenueTotal)}</span>.
-                      Unpaid follow-up is
-                      <span className="font-semibold text-brand-black"> {currency(commandCenter?.summary.unpaidRevenueTotal || 0)}</span>.
-                    </>
-                  }
-                  detail="Open payment follow-up"
-                  accent
-                  onClick={() => setActiveTab('payments')}
-                />
+          {/* Header */}
+          <header className="mb-6">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <h1 className="text-[2rem] font-semibold tracking-tight text-[#1d1d1f] sm:text-[2.25rem]">Dashboard</h1>
+                <p className="mt-0.5 text-[14px] text-[#86868b]">{board?.summary.totalJobs ?? 0} clients &middot; {auth?.email ?? 'Signed in'}</p>
               </div>
+              <div className="flex items-center gap-1.5">
+                <button type="button" onClick={() => { setNotifsOpen(!notifsOpen); setCopilotOpen(false); }} className="relative inline-flex h-9 w-9 items-center justify-center rounded-full text-[#86868b] transition-colors hover:bg-black/5 hover:text-[#1d1d1f]">
+                  <Bell className="h-[18px] w-[18px]" />
+                  {unreadNotifs.length > 0 && <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-red-500" />}
+                </button>
+                <button type="button" onClick={() => { setCopilotOpen(!copilotOpen); setNotifsOpen(false); }} className={`inline-flex h-9 w-9 items-center justify-center rounded-full transition-colors ${copilotOpen ? 'bg-[#0071e3] text-white' : 'text-[#86868b] hover:bg-black/5 hover:text-[#1d1d1f]'}`}>
+                  <Bot className="h-[18px] w-[18px]" />
+                </button>
+                <button type="button" onClick={openNewBooking} className="ml-1 inline-flex items-center gap-1.5 rounded-full bg-[#0071e3] px-4 py-2 text-[13px] font-medium text-white transition-colors hover:bg-[#0077ed]">
+                  <Plus className="h-3.5 w-3.5" /> New
+                </button>
+                <button type="button" onClick={refreshAll} className="inline-flex h-9 w-9 items-center justify-center rounded-full text-[#86868b] transition-colors hover:bg-black/5 hover:text-[#1d1d1f]">
+                  <RotateCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+                </button>
+              </div>
+            </div>
 
-              <div className="dashboard-tabrail flex flex-wrap gap-2 rounded-[24px] border border-neutral-200/70 bg-white/70 p-2">
-                {tabs.map((tab) => {
-                  const Icon = tab.icon;
-                  const isActive = tab.id === activeTab;
-                  const count = tabCounts[tab.id];
-                  const showCount = ['overview', 'leads', 'payments', 'notifications'].includes(tab.id) && count > 0;
+            {/* Toolbar */}
+            <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center">
+              <div className="flex gap-0.5 rounded-xl bg-white/60 p-1 shadow-sm backdrop-blur">
+                {viewTabs.map((t) => {
+                  const Icon = t.icon; const active = view === t.id;
                   return (
-                    <button
-                      key={tab.id}
-                      type="button"
-                      onClick={() => setActiveTab(tab.id)}
-                      className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition ${
-                        isActive
-                          ? 'border-brand-mclaren bg-brand-mclaren text-white shadow-sm'
-                          : 'border-transparent bg-transparent text-gray-700 hover:border-brand-mclaren/30 hover:bg-white hover:text-brand-mclaren'
-                      }`}
-                    >
-                      <Icon className="h-4 w-4" />
-                      {tab.label}
-                      {showCount && (
-                        <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${isActive ? 'bg-white/15 text-white' : 'bg-neutral-100 text-gray-500'}`}>
-                          {count}
-                        </span>
-                      )}
+                    <button key={t.id} type="button" onClick={() => setView(t.id)} className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[13px] font-medium transition-all ${active ? 'bg-white text-[#1d1d1f] shadow-sm' : 'text-[#86868b] hover:text-[#1d1d1f]'}`}>
+                      <Icon className="h-3.5 w-3.5" /> {t.label}
                     </button>
                   );
                 })}
               </div>
-            </>
-          ) : (
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <div className="text-xs font-semibold uppercase tracking-[0.22em] text-brand-mclaren">Workspace Bar Hidden</div>
-                <div className="mt-1 text-sm text-gray-600">
-                  {tabs.find((tab) => tab.id === activeTab)?.label || 'Dashboard'} | Last refresh {lastRefreshedAt ? fmtTime(lastRefreshedAt) : 'not synced yet'}
+              <label className="relative flex-1">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#86868b]" />
+                <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search clients, services, leads..." className="w-full rounded-xl border border-black/[0.06] bg-white/80 py-2 pl-9 pr-4 text-[13px] text-[#1d1d1f] placeholder:text-[#86868b] backdrop-blur outline-none transition-colors focus:border-[#0071e3]/40 focus:bg-white" />
+              </label>
+              {(view === 'schedule' || view === 'calendar') && (
+                <div className="flex gap-0.5 rounded-xl bg-white/60 p-1 shadow-sm backdrop-blur">
+                  {presetOptions.map((p) => (
+                    <button key={p.value} type="button" onClick={() => setPreset(p.value)} className={`rounded-lg px-3 py-2 text-[13px] font-medium transition-all ${preset === p.value ? 'bg-white text-[#1d1d1f] shadow-sm' : 'text-[#86868b] hover:text-[#1d1d1f]'}`}>{p.label}</button>
+                  ))}
                 </div>
+              )}
+              {view === 'calendar' && (
+                <button type="button" onClick={openBlockModal} className="inline-flex items-center gap-1.5 rounded-xl border border-black/[0.06] bg-white/80 px-3.5 py-2 text-[13px] font-medium text-[#1d1d1f] shadow-sm backdrop-blur transition-colors hover:border-[#0071e3]/30 hover:text-[#0071e3]">
+                  <Plus className="h-3.5 w-3.5" /> Block time
+                </button>
+              )}
+            </div>
+          </header>
+
+          {error && <div className="mb-5 rounded-xl border border-red-200/60 bg-red-50/80 px-4 py-2.5 text-[13px] text-red-700">{error}</div>}
+
+          {/* Content */}
+          {loading ? (
+            <div className="flex h-96 items-center justify-center"><p className="text-[14px] text-[#86868b]">Loading&hellip;</p></div>
+          ) : (
+            <div className="flex gap-5">
+              <div className="min-w-0 flex-1">
+                {view === 'schedule' && <ScheduleView board={board} filtered={filteredJobs} selectedId={selectedJob?.id ?? null} onSelect={setSelectedJobId} selectedJob={selectedJob} clientDetails={clientDetails} onOpen360={() => setCustomer360Open(true)} timeZone={dashboardTimeZone} />}
+                {view === 'calendar' && <CalendarView board={board} filtered={filteredJobs} selectedId={selectedJob?.id ?? null} onSelect={setSelectedJobId} onOpenBlock={openBlockModal} onDeleteBlock={deleteCalendarBlock} deletingBlockId={deletingBlockId} timeZone={dashboardTimeZone} />}
+                {view === 'leads' && <LeadsView leads={filteredLeads} selected={selectedLead} onSelect={setSelectedLeadId} getServiceDisplay={getLeadServiceDisplay} onConvert={openConvertLead} />}
+                {view === 'reports' && <ReportsView reports={reports} timeZone={dashboardTimeZone} />}
               </div>
-              <div className="flex flex-wrap items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => setDashboardTheme((current) => (current === 'dark' ? 'light' : 'dark'))}
-                  className="dashboard-theme-toggle inline-flex items-center gap-2 rounded-2xl border border-neutral-200 px-4 py-3 text-sm font-semibold text-gray-700 transition hover:border-brand-black hover:text-brand-black"
-                >
-                  {isDarkMode ? <SunMedium className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-                  {isDarkMode ? 'Light mode' : 'Dark mode'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowDashboardChrome(true)}
-                  className="inline-flex items-center gap-2 rounded-2xl border border-neutral-200 px-4 py-3 text-sm font-semibold text-gray-700 transition hover:border-brand-black hover:text-brand-black"
-                >
-                  <ChevronDown className="h-4 w-4" />
-                  Show bar
-                </button>
-                <button
-                  type="button"
-                  onClick={refreshAll}
-                  className="inline-flex items-center gap-2 rounded-2xl bg-brand-mclaren px-4 py-3 text-sm font-semibold text-white transition hover:bg-brand-mclaren-dark"
-                >
-                  <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-                  Refresh
-                </button>
-              </div>
+
+              {/* Copilot slide-over */}
+              {copilotOpen && (
+                <div className="hidden h-[min(28rem,calc(100vh-11rem))] w-[340px] min-h-[22rem] min-w-[320px] max-h-[calc(100vh-8rem)] max-w-[min(52vw,48rem)] flex-none self-start overflow-auto resize lg:block">
+                  <CopilotPanel messages={chatMessages} input={chatInput} onInputChange={setChatInput} onSend={sendChat} sending={chatSending} onClose={() => setCopilotOpen(false)} onConfirmProposal={confirmChatProposal} onCancelProposal={cancelChatProposal} actionLoadingId={chatActionLoadingId} timeZone={dashboardTimeZone} />
+                </div>
+              )}
+
+              {/* Notifications slide-over */}
+              {notifsOpen && !copilotOpen && (
+                <div className="hidden w-[340px] flex-none lg:block">
+                  <NotificationsPanel notifications={notifications} unread={unreadNotifs} onClose={() => setNotifsOpen(false)} />
+                </div>
+              )}
             </div>
           )}
         </div>
 
-        {error && (
-          <div className="rounded-[24px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 shadow-sm">
-            {error}
-          </div>
+        {/* Customer 360 Overlay */}
+        {customer360Open && clientDetails && (
+          <Customer360Overlay details={clientDetails} onClose={() => setCustomer360Open(false)} timeZone={dashboardTimeZone} />
         )}
 
-        {loading ? (
-          <div className="rounded-[28px] border border-neutral-200 bg-white p-8 text-sm text-gray-600 shadow-[0_18px_60px_rgba(15,23,42,0.06)]">
-            Loading dashboard...
+        {/* Booking Modal */}
+        {modalOpen && (
+          <BookingModal form={form} setForm={setForm} onSubmit={submitBooking} submitting={submitting} onClose={() => { setModalOpen(false); setConvertLeadId(null); }} convertLead={convertLeadId ? leads.find((l) => l.id === convertLeadId) ?? null : null} groupedPrimary={groupedPrimary} addOns={addOnOfferings} onServiceChange={updateFormService} timeZone={dashboardTimeZone} />
+        )}
+
+        {blockModalOpen && (
+          <CalendarBlockModal form={blockForm} setForm={setBlockForm} submitting={blockSubmitting} onSubmit={submitCalendarBlock} onClose={() => setBlockModalOpen(false)} timeZone={dashboardTimeZone} />
+        )}
+
+        {/* Mobile copilot overlay */}
+        {copilotOpen && (
+          <div className="fixed inset-0 z-50 bg-black/25 backdrop-blur-sm lg:hidden">
+            <div className="absolute inset-x-0 bottom-0 top-12 rounded-t-2xl bg-white shadow-[0_-8px_40px_rgba(0,0,0,0.12)]">
+              <CopilotPanel messages={chatMessages} input={chatInput} onInputChange={setChatInput} onSend={sendChat} sending={chatSending} onClose={() => setCopilotOpen(false)} onConfirmProposal={confirmChatProposal} onCancelProposal={cancelChatProposal} actionLoadingId={chatActionLoadingId} timeZone={dashboardTimeZone} />
+            </div>
           </div>
-        ) : (
-          <>
-            {activeTab === 'overview' && (
-              <div className="grid gap-6 xl:grid-cols-[1.14fr_0.86fr]">
-                <div className="space-y-6">
-                  <Panel title="Urgent Actions" subtitle="What needs attention first">
-                    {commandCenter ? (
-                      <div className="space-y-3">
-                        {commandCenter.urgentActions.length ? (
-                          commandCenter.urgentActions.map((action) => (
-                            <button
-                              key={action.id}
-                              type="button"
-                              onClick={() => handleCommandCenterAction(action)}
-                              className="flex w-full items-start justify-between gap-4 rounded-2xl border border-neutral-200 px-4 py-4 text-left transition hover:border-brand-mclaren hover:bg-brand-mclaren/5"
-                            >
-                              <div>
-                                <div className="flex items-center gap-2">
-                                  <StatusBadge
-                                    status={
-                                      action.urgency === 'high'
-                                        ? 'closed_lost'
-                                        : action.urgency === 'medium'
-                                          ? 'booked'
-                                          : 'scheduled'
-                                    }
-                                    label={action.urgency}
-                                  />
-                                  <div className="font-semibold text-brand-black">{action.title}</div>
-                                </div>
-                                <div className="mt-2 text-sm text-gray-600">{action.subtitle}</div>
-                              </div>
-                              <span className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-mclaren">
-                                {action.actionLabel}
-                              </span>
-                            </button>
-                          ))
-                        ) : (
-                          <EmptyState message="No urgent actions right now." />
-                        )}
-                      </div>
-                    ) : (
-                      <EmptyState message="Command center data is not available." />
-                    )}
-                  </Panel>
-
-                  <div className="grid gap-6 lg:grid-cols-2">
-                    <Panel title="Today" subtitle="Live schedule with quick actions">
-                      {commandCenter?.todaySchedule.length ? (
-                        <div className="space-y-3">
-                          {commandCenter.todaySchedule.map((job) => (
-                            <div key={job.id} className="rounded-2xl border border-neutral-200 px-4 py-4">
-                              <div className="flex items-start justify-between gap-3">
-                                <div>
-                                  <div className="font-semibold text-brand-black">{job.clientName}</div>
-                                  <div className="mt-1 text-sm text-gray-600">{job.serviceType}</div>
-                                  <div className="mt-1 text-xs text-gray-500">{fmtTime(job.scheduledAt)} | {currency(job.estimatedAmount)}</div>
-                                </div>
-                                <div className="flex flex-wrap gap-2">
-                                  <StatusBadge status={job.uiStatus} label={jobStatusLabel[job.uiStatus]} />
-                                  <StatusBadge status={job.paymentStatus} label={job.paymentStatus.toUpperCase()} />
-                                </div>
-                              </div>
-                              <div className="mt-3 flex flex-wrap gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setActiveTab('jobs');
-                                    setSelectedScheduleJobId(job.id);
-                                  }}
-                                  className="rounded-xl border border-neutral-200 px-3 py-2 text-xs font-semibold text-gray-700 hover:border-brand-mclaren hover:text-brand-mclaren"
-                                >
-                                  Open job
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    updateJob(job.id, {
-                                      paymentStatus: job.paymentStatus === 'paid' ? 'unpaid' : 'paid',
-                                    })
-                                  }
-                                  className="rounded-xl border border-neutral-200 px-3 py-2 text-xs font-semibold text-gray-700 hover:border-brand-mclaren hover:text-brand-mclaren"
-                                >
-                                  Mark {job.paymentStatus === 'paid' ? 'Unpaid' : 'Paid'}
-                                </button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <EmptyState message="No work is scheduled today." />
-                      )}
-                    </Panel>
-
-                    <Panel title="Next Up" subtitle="Upcoming jobs across the next few days">
-                      {commandCenter?.nextUp.length ? (
-                        <div className="space-y-3">
-                          {commandCenter.nextUp.map((job) => (
-                            <button
-                              key={job.id}
-                              type="button"
-                              onClick={() => {
-                                setActiveTab('jobs');
-                                setSelectedScheduleJobId(job.id);
-                              }}
-                              className="w-full rounded-2xl border border-neutral-200 px-4 py-4 text-left transition hover:border-brand-mclaren hover:bg-brand-mclaren/5"
-                            >
-                              <div className="flex items-start justify-between gap-3">
-                                <div>
-                                  <div className="font-semibold text-brand-black">{job.clientName}</div>
-                                  <div className="mt-1 text-sm text-gray-600">{job.serviceType}</div>
-                                  <div className="mt-1 text-xs text-gray-500">{job.dayLabel || fmtDate(job.scheduledAt)} | {fmtTime(job.scheduledAt)}</div>
-                                </div>
-                                <div className="text-right">
-                                  <div className="text-sm font-semibold text-brand-black">{currency(job.estimatedAmount)}</div>
-                                  <div className="mt-1 text-xs text-gray-500">{job.pickupRequested ? 'Pickup' : 'Standard'}</div>
-                                </div>
-                              </div>
-                            </button>
-                          ))}
-                        </div>
-                      ) : (
-                        <EmptyState message="No upcoming jobs in the current window." />
-                      )}
-                    </Panel>
-                  </div>
-
-                  <Panel title="Revenue Focus" subtitle="Expected totals and unpaid follow-up">
-                    {commandCenter ? (
-                      <div className="grid gap-4 lg:grid-cols-[0.88fr_1.12fr]">
-                        <div className="grid gap-4">
-                          <InsightCard
-                            eyebrow="Today's Target"
-                            title={currency(commandCenter.summary.expectedRevenueToday)}
-                            body={
-                              <>
-                                This is the revenue expected from today's booked work.
-                                <span className="font-semibold text-brand-black"> {metrics.jobsScheduledToday}</span> jobs are on deck for today.
-                              </>
-                            }
-                            accent
-                          />
-                          <InsightCard
-                            eyebrow="What Still Needs Follow-up"
-                            title={currency(commandCenter.summary.unpaidRevenueTotal)}
-                            body={
-                              <>
-                                Unpaid follow-up is outstanding across the queue. There are
-                                <span className="font-semibold text-brand-black"> {commandCenter.summary.openRequestCount}</span> open requests and
-                                <span className="font-semibold text-brand-black"> {commandCenter.summary.aiReviewCount}</span> AI items still waiting on human review.
-                              </>
-                            }
-                          />
-                        </div>
-                        <div className="rounded-[24px] border border-neutral-200 bg-neutral-50 p-4">
-                          <div className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">Highest Value Unpaid</div>
-                          <div className="mt-3 space-y-3">
-                            {commandCenter.revenueFocus.highestValueUnpaidJobs.length ? (
-                              commandCenter.revenueFocus.highestValueUnpaidJobs.map((job) => (
-                                <button
-                                  key={job.id}
-                                  type="button"
-                                  onClick={() => {
-                                    setActiveTab('payments');
-                                  }}
-                                  className="flex w-full items-center justify-between rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-left transition hover:border-brand-mclaren hover:text-brand-mclaren"
-                                >
-                                  <div>
-                                    <div className="font-semibold text-brand-black">{job.clientName}</div>
-                                    <div className="mt-1 text-sm text-gray-600">{job.serviceType}</div>
-                                  </div>
-                                  <div className="text-right">
-                                    <div className="font-semibold text-brand-black">{currency(job.estimatedAmount)}</div>
-                                    <div className="mt-1 text-xs text-gray-500">{fmtDate(job.scheduledAt)}</div>
-                                  </div>
-                                </button>
-                              ))
-                            ) : (
-                              <EmptyState message="No unpaid bookings are queued right now." />
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <EmptyState message="Revenue focus is not available." />
-                    )}
-                  </Panel>
-                </div>
-
-                <div className="space-y-6">
-                  <Panel title="Open Requests" subtitle="Request-mode leads ready for follow-up or conversion">
-                    {commandCenter?.openRequests.length ? (
-                      <div className="space-y-3">
-                        {commandCenter.openRequests.map((lead) => (
-                          <div key={lead.id} className="rounded-2xl border border-neutral-200 px-4 py-4">
-                            <div className="flex items-start justify-between gap-3">
-                              <div>
-                                <div className="font-semibold text-brand-black">{lead.name}</div>
-                                <div className="mt-1 text-sm text-gray-600">{lead.serviceType || 'Service request'}</div>
-                                <div className="mt-1 text-xs text-gray-500">{fmtRelative(lead.createdAt)} | {lead.phone || 'No phone'}</div>
-                              </div>
-                              <StatusBadge status="new_lead" label="Request" />
-                            </div>
-                            <div className="mt-3 flex flex-wrap gap-2">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const fullLead = leads.find((item) => item.id === lead.id);
-                                  if (fullLead) {
-                                    prepareJobFromLead(fullLead);
-                                  } else {
-                                    setActiveTab('leads');
-                                  }
-                                }}
-                                className="rounded-xl border border-brand-mclaren px-3 py-2 text-xs font-semibold text-brand-mclaren hover:bg-brand-mclaren hover:text-white"
-                              >
-                                Prepare booking
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setActiveTab('copilot')}
-                                className="rounded-xl border border-neutral-200 px-3 py-2 text-xs font-semibold text-gray-700 hover:border-brand-mclaren hover:text-brand-mclaren"
-                              >
-                                Ask copilot
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <EmptyState message="No request-mode leads currently need action." />
-                    )}
-                  </Panel>
-
-                  <Panel title="Recent Activity" subtitle="Cross-entity updates across leads, jobs, payments, notifications, and AI">
-                    {activityFeed.length ? (
-                      <div className="space-y-3">
-                        {activityFeed.map((item) => (
-                          <div key={item.id} className="rounded-2xl border border-neutral-200 px-4 py-4">
-                            <div className="flex items-start justify-between gap-3">
-                              <div>
-                                <div className="font-semibold text-brand-black">{item.title}</div>
-                                <div className="mt-1 text-sm text-gray-600">{item.subtitle}</div>
-                                <div className="mt-2 text-xs text-gray-500">{item.meta} | {fmtRelative(item.createdAt)}</div>
-                              </div>
-                              <StatusBadge
-                                status={
-                                  item.kind === 'payment'
-                                    ? 'paid'
-                                    : item.kind === 'notification'
-                                      ? 'new_lead'
-                                      : item.kind === 'ai'
-                                        ? 'booked'
-                                        : 'scheduled'
-                                }
-                                label={item.kind.replace(/_/g, ' ')}
-                              />
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <EmptyState message="Recent activity will appear here." />
-                    )}
-                  </Panel>
-
-                  <Panel title="Inbox and AI Review" subtitle="Unread notifications and review-required AI outputs">
-                    <div className="space-y-4">
-                      <div className="space-y-3">
-                        <div className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">Unread Notifications</div>
-                        {commandCenter?.unreadNotifications.length ? (
-                          commandCenter.unreadNotifications.map((notification) => (
-                            <div key={notification.id} className="rounded-2xl border border-neutral-200 px-4 py-3">
-                              <div className="flex items-start justify-between gap-3">
-                                <div>
-                                  <div className="font-semibold text-brand-black">{notification.title}</div>
-                                  <div className="mt-1 text-sm text-gray-600">{notification.message}</div>
-                                  <div className="mt-1 text-xs text-gray-500">{fmtDateTime(notification.created_at)}</div>
-                                </div>
-                                <button
-                                  type="button"
-                                  onClick={() => markNotificationRead(notification.id)}
-                                  className="rounded-xl border border-neutral-200 px-3 py-2 text-xs font-semibold text-gray-700 hover:border-brand-mclaren hover:text-brand-mclaren"
-                                >
-                                  Mark read
-                                </button>
-                              </div>
-                            </div>
-                          ))
-                        ) : (
-                          <EmptyState message="No unread notifications." />
-                        )}
-                      </div>
-                      <div className="space-y-3">
-                        <div className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">AI Review Queue</div>
-                        {commandCenter?.aiReviewRuns.length ? (
-                          commandCenter.aiReviewRuns.map((run) => (
-                            <div key={run.id} className="rounded-2xl border border-neutral-200 px-4 py-3">
-                              <div className="flex items-start justify-between gap-3">
-                                <div>
-                                  <div className="font-semibold text-brand-black">{run.feature_name.replace(/_/g, ' ')}</div>
-                                  <div className="mt-1 text-sm text-gray-600">{run.entity_type} | {run.entity_id}</div>
-                                </div>
-                                <button
-                                  type="button"
-                                  onClick={() => setActiveTab('notifications')}
-                                  className="rounded-xl border border-neutral-200 px-3 py-2 text-xs font-semibold text-gray-700 hover:border-brand-mclaren hover:text-brand-mclaren"
-                                >
-                                  Review
-                                </button>
-                              </div>
-                            </div>
-                          ))
-                        ) : (
-                          <EmptyState message="No AI outputs need review." />
-                        )}
-                      </div>
-                    </div>
-                  </Panel>
-                </div>
-              </div>
-            )}
-
-            {activeTab === 'leads' && (
-              <div className="grid gap-6 lg:grid-cols-[1.16fr_0.84fr]">
-                <Panel title="Lead Triage Queue" subtitle={`Showing ${leadPagination?.total || leads.length} recent leads`}>
-                  <div className="space-y-4">
-                    {leads.length ? (
-                      leads.map((lead) => {
-                        const copilotState = readAiFeatureState(lead.ai_metadata, 'copilot');
-                        const replyDraftState = readAiFeatureState(lead.ai_metadata, 'replyDraft');
-                        const activeComposer = leadDraftComposer[lead.id];
-
-                        return (
-                          <div key={lead.id} className="rounded-[24px] border border-neutral-200 bg-white p-4 shadow-sm">
-                            <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-                              <div className="min-w-0 flex-1">
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <div className="font-semibold text-brand-black">{lead.name}</div>
-                                  <StatusBadge status={lead.ui_status || 'new_lead'} />
-                                  {lead.booking_mode && (
-                                    <StatusBadge
-                                      status={lead.booking_mode === 'instant' ? 'scheduled' : 'new_lead'}
-                                      label={lead.booking_mode === 'instant' ? 'Instant booking' : 'Request booking'}
-                                    />
-                                  )}
-                                  {getLeadPickupRequested(lead) && <StatusBadge status="booked" label="Pickup requested" />}
-                                </div>
-                                <div className="mt-2 text-sm text-gray-600">
-                                  {lead.phone || '-'}{lead.email ? ` | ${lead.email}` : ''} | {fmtRelative(lead.created_at)}
-                                </div>
-                                <div className="mt-3 text-sm font-medium text-brand-black">{getLeadServiceDisplay(lead)}</div>
-                                <div className="mt-2 flex flex-wrap gap-4 text-xs text-gray-500">
-                                  <span>{vehicleLabel(lead)}</span>
-                                  {getLeadPreferredSummary(lead) && <span>Preferred: {getLeadPreferredSummary(lead)}</span>}
-                                  {getLeadPhotoCount(lead) > 0 && <span>{getLeadPhotoCount(lead)} photo{getLeadPhotoCount(lead) === 1 ? '' : 's'}</span>}
-                                </div>
-                                {(getLeadIssueDetails(lead) || getLeadNotes(lead)) && (
-                                  <div className="mt-3 rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-gray-600">
-                                    {getLeadIssueDetails(lead) || getLeadNotes(lead)}
-                                  </div>
-                                )}
-                                {getLeadPickupRequested(lead) && getLeadPickupAddressSummary(lead) && (
-                                  <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                                    Pickup address: {getLeadPickupAddressSummary(lead)}
-                                  </div>
-                                )}
-                              </div>
-
-                              <div className="w-full space-y-3 xl:w-[23rem]">
-                                <AiStateSummary
-                                  state={copilotState}
-                                  emptyMessage="No AI triage yet. Generate a grounded summary to surface missing info and the recommended next step."
-                                />
-                                <div className="flex flex-wrap gap-2">
-                                  <button
-                                    type="button"
-                                    onClick={() => runLeadCopilot(lead.id)}
-                                    disabled={aiBusyKey === `lead-copilot:${lead.id}`}
-                                    className="rounded-xl border border-neutral-200 px-3 py-2 text-xs font-semibold text-gray-700 hover:border-brand-mclaren hover:text-brand-mclaren disabled:cursor-not-allowed disabled:opacity-60"
-                                  >
-                                    {aiBusyKey === `lead-copilot:${lead.id}` ? 'Generating...' : 'Run Copilot'}
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => runLeadReplyDraft(lead.id)}
-                                    disabled={aiBusyKey === `lead-reply:${lead.id}`}
-                                    className="rounded-xl border border-neutral-200 px-3 py-2 text-xs font-semibold text-gray-700 hover:border-brand-mclaren hover:text-brand-mclaren disabled:cursor-not-allowed disabled:opacity-60"
-                                  >
-                                    {aiBusyKey === `lead-reply:${lead.id}` ? 'Drafting...' : 'Draft Reply'}
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => prepareJobFromLead(lead)}
-                                    className="rounded-xl border border-brand-mclaren px-3 py-2 text-xs font-semibold text-brand-mclaren hover:bg-brand-mclaren hover:text-white"
-                                  >
-                                    {lead.booking_mode === 'request' ? 'Prepare booking' : 'Book appointment'}
-                                  </button>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <select
-                                    value={lead.ui_status || 'new_lead'}
-                                    onChange={(event) => updateLeadStatus(lead.id, event.target.value as LeadUiStatus)}
-                                    className="w-full rounded-xl border border-neutral-200 px-3 py-2 text-sm"
-                                  >
-                                    <option value="new_lead">New Lead</option>
-                                    <option value="booked">Booked</option>
-                                    <option value="service_completed">Service Completed</option>
-                                    <option value="closed_lost">Closed Lost</option>
-                                  </select>
-                                  {copilotState?.runId && copilotState.actions?.length ? (
-                                    <button
-                                      type="button"
-                                      onClick={() => applyAiRun(copilotState.runId, 0)}
-                                      disabled={aiBusyKey === `apply-run:${copilotState.runId}:0`}
-                                      className="rounded-xl bg-brand-black px-3 py-2 text-xs font-semibold text-white hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
-                                    >
-                                      Apply
-                                    </button>
-                                  ) : null}
-                                </div>
-                                {(replyDraftState?.drafts.length || activeComposer) && (
-                                  <div className="rounded-2xl border border-neutral-200 bg-neutral-50 p-3">
-                                    <div className="flex items-center justify-between gap-3">
-                                      <div className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500">Reply Draft</div>
-                                      <div className="flex flex-wrap gap-2">
-                                        {(replyDraftState?.drafts || []).map((draft) => (
-                                          <button
-                                            key={`${lead.id}-${draft.channel}`}
-                                            type="button"
-                                            onClick={() =>
-                                              setLeadDraftComposer((current) => ({
-                                                ...current,
-                                                [lead.id]: {
-                                                  channel: draft.channel,
-                                                  subject: draft.subject,
-                                                  body: draft.body,
-                                                },
-                                              }))
-                                            }
-                                            className="rounded-full border border-neutral-200 px-2.5 py-1 text-[11px] font-semibold text-gray-600 hover:border-brand-mclaren hover:text-brand-mclaren"
-                                          >
-                                            {draft.channel.toUpperCase()}
-                                          </button>
-                                        ))}
-                                      </div>
-                                    </div>
-                                    {activeComposer ? (
-                                      <div className="mt-3 space-y-3">
-                                        {activeComposer.subject && (
-                                          <div className="rounded-xl border border-neutral-200 bg-white px-3 py-2 text-xs text-gray-600">
-                                            <span className="font-semibold text-brand-black">Subject:</span> {activeComposer.subject}
-                                          </div>
-                                        )}
-                                        <TextArea
-                                          value={activeComposer.body}
-                                          onChange={(value) =>
-                                            setLeadDraftComposer((current) => ({
-                                              ...current,
-                                              [lead.id]: {
-                                                ...current[lead.id],
-                                                body: value,
-                                              },
-                                            }))
-                                          }
-                                          rows={5}
-                                        />
-                                        <button
-                                          type="button"
-                                          onClick={() => copyDraftToClipboard(lead.id)}
-                                          className="inline-flex items-center gap-2 rounded-xl border border-neutral-200 px-3 py-2 text-xs font-semibold text-gray-700 hover:border-brand-mclaren hover:text-brand-mclaren"
-                                        >
-                                          <Clipboard className="h-3.5 w-3.5" />
-                                          {copiedDraftKey === lead.id ? 'Copied' : 'Copy Draft'}
-                                        </button>
-                                      </div>
-                                    ) : (
-                                      <div className="mt-3 text-xs text-gray-500">Generate a reply draft to edit it here.</div>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })
-                    ) : (
-                      <EmptyState message="No recent leads are waiting in the queue." />
-                    )}
-                  </div>
-                </Panel>
-
-                <Panel title="Add New Lead" subtitle="Capture intake details from calls, walk-ins, or messages">
-                  <form className="space-y-4" onSubmit={submitLead}>
-                    <Input label="Customer Name" value={leadForm.name} onChange={(value) => setLeadForm((current) => ({ ...current, name: value }))} required />
-                    <Input label="Phone Number" value={leadForm.phone} onChange={(value) => setLeadForm((current) => ({ ...current, phone: value }))} required />
-                    <Input label="Email (optional)" value={leadForm.email} onChange={(value) => setLeadForm((current) => ({ ...current, email: value }))} />
-                    <ServiceCatalogField
-                      label="Service Requested"
-                      serviceCatalogId={leadForm.serviceCatalogId}
-                      serviceAddonIds={leadForm.serviceAddonIds}
-                      customServiceType={leadForm.customServiceType}
-                      groupedPrimaryOfferings={groupedPrimaryServiceOfferings}
-                      addOnOfferings={addOnServiceOfferings}
-                      onServiceCatalogIdChange={(value) =>
-                        syncLeadServiceSelection({
-                          serviceCatalogId: value,
-                          serviceAddonIds: value === 'custom' ? [] : leadForm.serviceAddonIds,
-                        })
-                      }
-                      onServiceAddonIdsChange={(value) =>
-                        syncLeadServiceSelection({
-                          serviceAddonIds: value,
-                        })
-                      }
-                      onCustomServiceTypeChange={(value) =>
-                        syncLeadServiceSelection({
-                          customServiceType: value,
-                        })
-                      }
-                    />
-                    <div className="grid gap-4 sm:grid-cols-3">
-                      <Input label="Vehicle Make" value={leadForm.vehicleMake} onChange={(value) => setLeadForm((current) => ({ ...current, vehicleMake: value }))} />
-                      <Input label="Vehicle Model" value={leadForm.vehicleModel} onChange={(value) => setLeadForm((current) => ({ ...current, vehicleModel: value }))} />
-                      <Input label="Vehicle Year" value={leadForm.vehicleYear} onChange={(value) => setLeadForm((current) => ({ ...current, vehicleYear: value }))} />
-                    </div>
-                    <Select
-                      label="Lead Status"
-                      value={leadForm.status}
-                      onChange={(value) => setLeadForm((current) => ({ ...current, status: value as LeadUiStatus }))}
-                      options={[
-                        { value: 'new_lead', label: 'New Lead' },
-                        { value: 'booked', label: 'Booked' },
-                        { value: 'service_completed', label: 'Service Completed' },
-                      ]}
-                    />
-                    <button
-                      type="submit"
-                      disabled={submittingLead}
-                      className="w-full rounded-2xl bg-brand-mclaren px-4 py-3 text-sm font-semibold text-white transition hover:bg-brand-mclaren-dark disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {submittingLead ? 'Saving Lead...' : 'Save Lead'}
-                    </button>
-                  </form>
-                </Panel>
-              </div>
-            )}
-
-            {activeTab === 'jobs' && (
-              <div className="space-y-6">
-                <Panel title="Schedule Board" subtitle="Compact board and queue views with inline actions for the day-to-day operator workflow">
-                  <div className="space-y-5">
-                    <div className="rounded-[28px] border border-brand-black/10 bg-[linear-gradient(135deg,#fff9f4_0%,#ffffff_42%,#f8fafc_100%)] p-4 sm:p-5">
-                      <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-                        <div className="space-y-3">
-                          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-mclaren">Operator Range</div>
-                          <div className="text-2xl font-semibold text-brand-black">{schedulePresetLabel[schedulePreset]}</div>
-                          <div className="max-w-2xl text-sm text-gray-600">
-                            Switch between quick windows, then expand or collapse each day as needed while keeping the dense queue one click away.
-                          </div>
-                        </div>
-                        <div className="grid gap-3 sm:grid-cols-3 xl:min-w-[29rem]">
-                          <div className="rounded-2xl border border-white/80 bg-white/90 px-4 py-3 shadow-sm">
-                            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500">In View</div>
-                            <div className="mt-2 text-2xl font-semibold text-brand-black">{scheduleBoard?.summary.totalJobs || 0}</div>
-                            <div className="mt-1 text-xs text-gray-500">Jobs in the current working range</div>
-                          </div>
-                          <div className="rounded-2xl border border-white/80 bg-white/90 px-4 py-3 shadow-sm">
-                            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500">Unpaid Follow-up</div>
-                            <div className="mt-2 text-2xl font-semibold text-brand-black">{scheduleBoard?.summary.unpaidJobs || 0}</div>
-                            <div className="mt-1 text-xs text-gray-500">Needs payment confirmation</div>
-                          </div>
-                          <div className="rounded-2xl border border-white/80 bg-white/90 px-4 py-3 shadow-sm">
-                            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500">Pickup Logistics</div>
-                            <div className="mt-2 text-2xl font-semibold text-brand-black">{scheduleBoard?.summary.pickupJobs || 0}</div>
-                            <div className="mt-1 text-xs text-gray-500">Requires transport handling</div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-[26px] border border-neutral-200 bg-neutral-50/80 p-4">
-                      <div className="flex flex-wrap gap-2">
-                        {(Object.keys(schedulePresetLabel) as SchedulePreset[]).map((preset) => (
-                          <button
-                            key={preset}
-                            type="button"
-                            onClick={() => setSchedulePreset(preset)}
-                            className={`rounded-full border px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] transition ${
-                              schedulePreset === preset
-                                ? 'border-brand-mclaren bg-brand-mclaren text-white'
-                                : 'border-neutral-200 bg-white text-gray-600 hover:border-brand-mclaren hover:text-brand-mclaren'
-                            }`}
-                          >
-                            {schedulePresetLabel[preset]}
-                          </button>
-                        ))}
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setScheduleViewMode('board')}
-                          className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] ${
-                            scheduleViewMode === 'board'
-                              ? 'border-brand-black bg-brand-black text-white'
-                              : 'border-neutral-200 bg-white text-gray-600'
-                          }`}
-                        >
-                          <LayoutGrid className="h-3.5 w-3.5" />
-                          Board
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setScheduleViewMode('table')}
-                          className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] ${
-                            scheduleViewMode === 'table'
-                              ? 'border-brand-black bg-brand-black text-white'
-                              : 'border-neutral-200 bg-white text-gray-600'
-                          }`}
-                        >
-                          <TableProperties className="h-3.5 w-3.5" />
-                          Table
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setAllScheduleGroupsCollapsed(false)}
-                          className="inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-gray-600 hover:border-brand-black hover:text-brand-black"
-                        >
-                          <ChevronDown className="h-3.5 w-3.5" />
-                          Expand
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setAllScheduleGroupsCollapsed(true)}
-                          className="inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-gray-600 hover:border-brand-black hover:text-brand-black"
-                        >
-                          <ChevronUp className="h-3.5 w-3.5" />
-                          Collapse
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="grid gap-4 rounded-[26px] border border-neutral-200 bg-white p-4 md:grid-cols-2 xl:grid-cols-3">
-                      <Select
-                        label="Job State"
-                        value={scheduleStatusFilter}
-                        onChange={(value) => setScheduleStatusFilter(value as 'all' | JobUiStatus)}
-                        options={[
-                          { value: 'all', label: 'All states' },
-                          { value: 'scheduled', label: 'Scheduled' },
-                          { value: 'completed', label: 'Completed' },
-                          { value: 'cancelled', label: 'Cancelled' },
-                        ]}
-                      />
-                      <Select
-                        label="Payment"
-                        value={schedulePaymentFilter}
-                        onChange={(value) => setSchedulePaymentFilter(value as 'all' | JobPaymentStatus)}
-                        options={[
-                          { value: 'all', label: 'All payments' },
-                          { value: 'unpaid', label: 'Unpaid' },
-                          { value: 'paid', label: 'Paid' },
-                        ]}
-                      />
-                      <Select
-                        label="Booking Source"
-                        value={scheduleBookingSourceFilter}
-                        onChange={(value) => setScheduleBookingSourceFilter(value as 'all' | 'public' | 'ops')}
-                        options={[
-                          { value: 'all', label: 'All sources' },
-                          { value: 'public', label: 'Public booking' },
-                          { value: 'ops', label: 'Ops booking' },
-                        ]}
-                      />
-                      <Select
-                        label="Pickup"
-                        value={schedulePickupFilter}
-                        onChange={(value) => setSchedulePickupFilter(value as 'all' | 'pickup' | 'standard')}
-                        options={[
-                          { value: 'all', label: 'All jobs' },
-                          { value: 'pickup', label: 'Pickup requested' },
-                          { value: 'standard', label: 'Standard drop-off' },
-                        ]}
-                      />
-                      <Select
-                        label="Assignee"
-                        value={scheduleAssigneeFilter}
-                        onChange={setScheduleAssigneeFilter}
-                        options={(scheduleBoard?.filters.assignees || [{ id: 'all', label: 'All assignees', count: 0 }]).map((option) => ({
-                          value: option.id,
-                          label: `${option.label}${option.id === 'all' ? '' : ` (${option.count})`}`,
-                        }))}
-                      />
-                      <Input label="Search" value={scheduleSearch} onChange={setScheduleSearch} placeholder="Search customer, service, notes, vehicle" />
-                    </div>
-
-                    {scheduleBoard && (
-                      <div className="grid gap-4 md:grid-cols-4">
-                        <MetricCard label="Jobs in View" value={scheduleBoard.summary.totalJobs} helper="Current filter result" />
-                        <MetricCard label="Unpaid" value={scheduleBoard.summary.unpaidJobs} helper="Payment follow-up required" />
-                        <MetricCard label="Pickup" value={scheduleBoard.summary.pickupJobs} helper="Logistics flagged" />
-                        <MetricCard label="Completed" value={scheduleBoard.summary.completedJobs} helper="Closed out in this view" />
-                      </div>
-                    )}
-
-                    {scheduleLoading ? (
-                      <EmptyState message="Loading schedule board..." />
-                    ) : scheduleBoard?.groups.length ? (
-                      scheduleViewMode === 'board' ? (
-                        <div className="space-y-5">
-                          {scheduleBoard.groups.map((group) => (
-                            <div key={group.key} className="rounded-[24px] border border-neutral-200 bg-[linear-gradient(180deg,#ffffff_0%,#fafafa_100%)] p-4">
-                              <button
-                                type="button"
-                                onClick={() => toggleScheduleGroup(group.key)}
-                                className="flex w-full items-center justify-between gap-3 text-left"
-                              >
-                                <div>
-                                  <div className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">{group.label}</div>
-                                  <div className="mt-1 text-sm text-gray-600">{group.jobs.length} job{group.jobs.length === 1 ? '' : 's'}</div>
-                                </div>
-                                <div className="flex items-center gap-3">
-                                  <div className="text-xs text-gray-500">{group.date ? fmtDate(group.date) : 'Unscheduled'}</div>
-                                  <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-neutral-200 bg-white text-gray-600">
-                                    {collapsedScheduleGroups[group.key] ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
-                                  </span>
-                                </div>
-                              </button>
-                              {!collapsedScheduleGroups[group.key] && (
-                                <div className="mt-4 grid gap-3 xl:grid-cols-2">
-                                  {group.jobs.map((job) => (
-                                    <button
-                                      key={job.id}
-                                      type="button"
-                                      onClick={() => setSelectedScheduleJobId(job.id)}
-                                      className={`w-full rounded-2xl border px-4 py-4 text-left transition ${
-                                        selectedScheduleJobId === job.id
-                                          ? 'border-brand-mclaren bg-white shadow-sm'
-                                          : 'border-neutral-200 bg-white hover:border-brand-mclaren hover:bg-brand-mclaren/5'
-                                      }`}
-                                    >
-                                      <div className="flex flex-col gap-4">
-                                        <div className="flex items-start justify-between gap-3">
-                                          <div className="min-w-0 flex-1">
-                                            <div className="flex flex-wrap items-center gap-2">
-                                              <div className="font-semibold text-brand-black">{job.clientName}</div>
-                                              <StatusBadge status={job.uiStatus} label={jobStatusLabel[job.uiStatus]} />
-                                              <StatusBadge status={job.paymentStatus} label={job.paymentStatus.toUpperCase()} />
-                                              {job.pickupRequested && <StatusBadge status="booked" label="Pickup requested" />}
-                                            </div>
-                                            <div className="mt-2 text-sm text-gray-600">{job.serviceType}</div>
-                                          </div>
-                                          <div className="text-right">
-                                            <div className="text-sm font-semibold text-brand-black">{currency(job.estimatedAmount)}</div>
-                                            <div className="mt-1 text-[11px] text-gray-500">{fmtTime(job.scheduledAt)}</div>
-                                          </div>
-                                        </div>
-
-                                        <div className="flex flex-wrap gap-2 text-[11px] text-gray-500">
-                                          <span className="rounded-full bg-neutral-100 px-2.5 py-1">{job.vehicleLabel}</span>
-                                          <span className="rounded-full bg-neutral-100 px-2.5 py-1">{job.assigneeLabel}</span>
-                                          {job.bookingSource && <span className="rounded-full bg-neutral-100 px-2.5 py-1">{job.bookingSource}</span>}
-                                        </div>
-
-                                        {job.notes ? (
-                                          <div className="rounded-2xl border border-neutral-200 bg-neutral-50 px-3 py-3 text-sm text-gray-600">
-                                            {job.notes}
-                                          </div>
-                                        ) : null}
-
-                                        <div className="flex flex-wrap gap-2">
-                                          <button
-                                            type="button"
-                                            onClick={(event) => {
-                                              event.stopPropagation();
-                                              updateJob(job.id, {
-                                                paymentStatus: job.paymentStatus === 'paid' ? 'unpaid' : 'paid',
-                                              });
-                                            }}
-                                            className="rounded-xl border border-neutral-200 px-3 py-2 text-xs font-semibold text-gray-700 hover:border-brand-mclaren hover:text-brand-mclaren"
-                                          >
-                                            {job.paymentStatus === 'paid' ? 'Mark Unpaid' : 'Mark Paid'}
-                                          </button>
-                                          <button
-                                            type="button"
-                                            onClick={(event) => {
-                                              event.stopPropagation();
-                                              updateJob(job.id, {
-                                                status: job.uiStatus === 'completed' ? 'scheduled' : 'completed',
-                                              });
-                                            }}
-                                            className="rounded-xl border border-neutral-200 px-3 py-2 text-xs font-semibold text-gray-700 hover:border-brand-mclaren hover:text-brand-mclaren"
-                                          >
-                                            {job.uiStatus === 'completed' ? 'Reopen' : 'Complete'}
-                                          </button>
-                                        </div>
-                                      </div>
-                                    </button>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <DataTable
-                          columns={['Customer', 'Service', 'When', 'Assignee', 'Status', 'Payment', 'Amount']}
-                          rows={scheduleBoard.groups.flatMap((group) =>
-                            group.jobs.map((job) => (
-                              <tr key={job.id} className="border-t border-neutral-100">
-                                <td className="px-4 py-3">
-                                  <button type="button" onClick={() => setSelectedScheduleJobId(job.id)} className="text-left font-semibold text-brand-black hover:text-brand-mclaren">
-                                    {job.clientName}
-                                  </button>
-                                </td>
-                                <td className="px-4 py-3 text-sm text-gray-600">{job.serviceType}</td>
-                                <td className="px-4 py-3 text-sm text-gray-600">{fmtDateTime(job.scheduledAt)}</td>
-                                <td className="px-4 py-3 text-sm text-gray-600">{job.assigneeLabel}</td>
-                                <td className="px-4 py-3"><StatusBadge status={job.uiStatus} label={jobStatusLabel[job.uiStatus]} /></td>
-                                <td className="px-4 py-3"><StatusBadge status={job.paymentStatus} label={job.paymentStatus.toUpperCase()} /></td>
-                                <td className="px-4 py-3 text-sm font-semibold text-brand-black">{currency(job.estimatedAmount)}</td>
-                              </tr>
-                            ))
-                          )}
-                        />
-                      )
-                    ) : (
-                      <EmptyState message="No jobs match the current board filters." />
-                    )}
-                  </div>
-                </Panel>
-
-                <div className="grid gap-6 xl:grid-cols-[0.88fr_1.12fr]">
-                  <Panel
-                    title={selectedScheduleJob ? 'Job Details' : selectedLead ? 'Convert Lead to Appointment' : 'Create Appointment'}
-                    subtitle={selectedScheduleJob ? 'Selected job context and quick actions' : selectedLead ? `Booking ${selectedLead.name}` : 'Add a scheduled job directly'}
-                  >
-                    {selectedScheduleJob ? (
-                      <div className="space-y-5">
-                        <div className="rounded-[24px] border border-brand-mclaren/20 bg-[#fff4eb] p-4">
-                          <div className="flex flex-wrap items-start justify-between gap-3">
-                            <div>
-                              <div className="flex flex-wrap items-center gap-2">
-                                <div className="text-lg font-semibold text-brand-black">{selectedScheduleJob.clientName}</div>
-                                <StatusBadge status={selectedScheduleJob.uiStatus} label={jobStatusLabel[selectedScheduleJob.uiStatus]} />
-                                <StatusBadge status={selectedScheduleJob.paymentStatus} label={selectedScheduleJob.paymentStatus.toUpperCase()} />
-                              </div>
-                              <div className="mt-2 text-sm text-gray-700">{selectedScheduleJob.serviceType}</div>
-                              <div className="mt-3 flex flex-wrap gap-2 text-xs text-gray-600">
-                                <span>{fmtDateTime(selectedScheduleJob.scheduledAt)}</span>
-                                <span>{selectedScheduleJob.vehicleLabel}</span>
-                                <span>{selectedScheduleJob.assigneeLabel}</span>
-                              </div>
-                            </div>
-                            <div className="text-right">
-                              <div className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">Estimated amount</div>
-                              <div className="mt-2 text-2xl font-semibold text-brand-black">{currency(selectedScheduleJob.estimatedAmount)}</div>
-                            </div>
-                          </div>
-                          {selectedScheduleJob.notes && (
-                            <div className="mt-4 rounded-2xl border border-white/50 bg-white px-4 py-3 text-sm text-gray-700">{selectedScheduleJob.notes}</div>
-                          )}
-                        </div>
-                        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                          <button
-                            type="button"
-                            onClick={() => updateJob(selectedScheduleJob.id, { paymentStatus: selectedScheduleJob.paymentStatus === 'paid' ? 'unpaid' : 'paid' })}
-                            className="rounded-2xl border border-neutral-200 px-4 py-3 text-sm font-semibold text-gray-700 transition hover:border-brand-mclaren hover:text-brand-mclaren"
-                          >
-                            {selectedScheduleJob.paymentStatus === 'paid' ? 'Mark Unpaid' : 'Mark Paid'}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => updateJob(selectedScheduleJob.id, { status: selectedScheduleJob.uiStatus === 'completed' ? 'scheduled' : 'completed' })}
-                            className="rounded-2xl border border-neutral-200 px-4 py-3 text-sm font-semibold text-gray-700 transition hover:border-brand-mclaren hover:text-brand-mclaren"
-                          >
-                            {selectedScheduleJob.uiStatus === 'completed' ? 'Reopen Job' : 'Mark Complete'}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => runJobWorkBrief(selectedScheduleJob.id)}
-                            disabled={aiBusyKey === `job-brief:${selectedScheduleJob.id}`}
-                            className="rounded-2xl bg-brand-black px-4 py-3 text-sm font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
-                          >
-                            {aiBusyKey === `job-brief:${selectedScheduleJob.id}` ? 'Generating Brief...' : 'Generate Work Brief'}
-                          </button>
-                        </div>
-                        <AiStateSummary
-                          state={readAiFeatureState(selectedScheduleJob.aiMetadata, 'workBrief')}
-                          emptyMessage="No work brief yet. Generate one to surface prep notes, risk flags, and customer-history highlights."
-                        />
-                      </div>
-                    ) : (
-                      <div className="space-y-4">
-                        {selectedLead && (
-                          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                            Booking from lead: <span className="font-semibold">{selectedLead.name}</span>. Saving this form will create the client record and first service job.
-                          </div>
-                        )}
-                        <form className="space-y-4" onSubmit={submitJob}>
-                          <Input label="Customer Name" value={jobForm.clientName} onChange={(value) => setJobForm((current) => ({ ...current, clientName: value }))} required />
-                          <ServiceCatalogField
-                            label="Service Booked"
-                            serviceCatalogId={jobForm.serviceCatalogId}
-                            serviceAddonIds={jobForm.serviceAddonIds}
-                            customServiceType={jobForm.customServiceType}
-                            groupedPrimaryOfferings={groupedPrimaryServiceOfferings}
-                            addOnOfferings={addOnServiceOfferings}
-                            onServiceCatalogIdChange={(value) =>
-                              syncJobServiceSelection({
-                                serviceCatalogId: value,
-                                serviceAddonIds: value === 'custom' ? [] : jobForm.serviceAddonIds,
-                              })
-                            }
-                            onServiceAddonIdsChange={(value) => syncJobServiceSelection({ serviceAddonIds: value })}
-                            onCustomServiceTypeChange={(value) => syncJobServiceSelection({ customServiceType: value })}
-                          />
-                          <Input label="Appointment Date & Time" type="datetime-local" value={jobForm.scheduledAt} onChange={(value) => setJobForm((current) => ({ ...current, scheduledAt: value }))} />
-                          <div className="grid gap-4 sm:grid-cols-3">
-                            <Input label="Vehicle Make" value={jobForm.vehicleMake} onChange={(value) => setJobForm((current) => ({ ...current, vehicleMake: value }))} />
-                            <Input label="Vehicle Model" value={jobForm.vehicleModel} onChange={(value) => setJobForm((current) => ({ ...current, vehicleModel: value }))} />
-                            <Input label="Vehicle Year" value={jobForm.vehicleYear} onChange={(value) => setJobForm((current) => ({ ...current, vehicleYear: value }))} />
-                          </div>
-                          <div className="grid gap-4 sm:grid-cols-2">
-                            <Input label="Estimated Amount (CAD)" value={jobForm.estimatedAmount} onChange={(value) => setJobForm((current) => ({ ...current, estimatedAmount: value }))} />
-                            <Select
-                              label="Payment Status"
-                              value={jobForm.paymentStatus}
-                              onChange={(value) => setJobForm((current) => ({ ...current, paymentStatus: value as JobPaymentStatus }))}
-                              options={[
-                                { value: 'unpaid', label: 'Unpaid' },
-                                { value: 'paid', label: 'Paid' },
-                              ]}
-                            />
-                          </div>
-                          <TextArea label="Notes" value={jobForm.notes} onChange={(value) => setJobForm((current) => ({ ...current, notes: value }))} rows={4} />
-                          <div className="flex flex-wrap gap-3">
-                            <button
-                              type="submit"
-                              disabled={submittingJob}
-                              className="rounded-2xl bg-brand-mclaren px-4 py-3 text-sm font-semibold text-white transition hover:bg-brand-mclaren-dark disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                              {submittingJob ? 'Saving Appointment...' : 'Save Appointment'}
-                            </button>
-                            {selectedLead && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setSelectedLeadId(null);
-                                  setJobForm(emptyJobForm);
-                                }}
-                                className="rounded-2xl border border-neutral-200 px-4 py-3 text-sm font-semibold text-gray-700 hover:border-brand-mclaren hover:text-brand-mclaren"
-                              >
-                                Clear Lead
-                              </button>
-                            )}
-                          </div>
-                        </form>
-                      </div>
-                    )}
-                  </Panel>
-
-                  <Panel title="Dense Queue" subtitle={`Showing ${jobPagination?.total || jobs.length} recent jobs`}>
-                    <DataTable
-                      columns={['Customer', 'Service', 'Appointment', 'Status', 'Payment', 'Amount']}
-                      rows={jobs.map((job) => (
-                        <tr key={job.id} className="border-t border-neutral-100">
-                          <td className="px-4 py-3">
-                            <button type="button" onClick={() => setSelectedScheduleJobId(job.id)} className="font-semibold text-brand-black hover:text-brand-mclaren">
-                              {job.client_name}
-                            </button>
-                            <div className="mt-1 text-xs text-gray-500">{vehicleLabel(job)}</div>
-                          </td>
-                          <td className="px-4 py-3 text-sm text-gray-600">{getJobServiceDisplay(job)}</td>
-                          <td className="px-4 py-3 text-sm text-gray-600">{fmtDateTime(job.scheduled_at)}</td>
-                          <td className="px-4 py-3"><StatusBadge status={job.ui_status || 'scheduled'} label={jobStatusLabel[job.ui_status || 'scheduled']} /></td>
-                          <td className="px-4 py-3"><StatusBadge status={job.payment_status || 'unpaid'} label={(job.payment_status || 'unpaid').toUpperCase()} /></td>
-                          <td className="px-4 py-3 text-sm font-semibold text-brand-black">{currency(getJobEstimatedAmount(job))}</td>
-                        </tr>
-                      ))}
-                    />
-                  </Panel>
-                </div>
-              </div>
-            )}
-            {activeTab === 'customers' && (
-              <div className="grid gap-6 xl:grid-cols-[0.72fr_1.28fr]">
-                <Panel title="Customer Roster" subtitle={`Showing ${clientPagination?.total || clients.length} active customers`}>
-                  <div className="space-y-4">
-                    <Input label="Search Customers" value={search} onChange={setSearch} placeholder="Search by name, phone, or email" />
-                    <div className="space-y-3">
-                      {filteredClients.length ? (
-                        filteredClients.map((client) => (
-                          <button
-                            key={client.id}
-                            type="button"
-                            onClick={() => setSelectedClientId(client.id)}
-                            className={`w-full rounded-[24px] border px-4 py-4 text-left transition ${
-                              selectedClientId === client.id
-                                ? 'border-brand-mclaren bg-brand-mclaren/5 shadow-sm'
-                                : 'border-neutral-200 bg-white hover:border-brand-mclaren/40'
-                            }`}
-                          >
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="min-w-0">
-                                <div className="font-semibold text-brand-black">{client.name}</div>
-                                <div className="mt-1 text-sm text-gray-600">{client.phone || client.email || '-'}</div>
-                              </div>
-                              {client.tags?.length ? (
-                                <span className="rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-500">
-                                  {client.tags.length} tag{client.tags.length === 1 ? '' : 's'}
-                                </span>
-                              ) : null}
-                            </div>
-                          </button>
-                        ))
-                      ) : (
-                        <EmptyState message="No customers found." />
-                      )}
-                    </div>
-                  </div>
-                </Panel>
-
-                <Panel title="CRM Profile" subtitle="Customer summary, history, notes, and timeline">
-                  {selectedClientDetails ? (
-                    <div className="space-y-6">
-                      <div className="rounded-[28px] border border-brand-mclaren/20 bg-[#fff4eb] p-5">
-                        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-                          <div>
-                            <div className="text-2xl font-semibold text-brand-black">{selectedClientDetails.client.name}</div>
-                            <div className="mt-2 flex flex-wrap gap-4 text-sm text-gray-700">
-                              <span>{selectedClientDetails.client.phone || 'No phone'}</span>
-                              <span>{selectedClientDetails.client.email || 'No email'}</span>
-                              <span>{selectedClientDetails.client.city || selectedClientDetails.client.province || 'No location set'}</span>
-                            </div>
-                          </div>
-                          <div className="flex flex-wrap gap-2">
-                            {selectedClientDetails.client.tags?.length ? (
-                              selectedClientDetails.client.tags.map((tag) => (
-                                <span key={tag} className="rounded-full border border-white/50 bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-600">
-                                  {tag}
-                                </span>
-                              ))
-                            ) : (
-                              <span className="rounded-full border border-white/50 bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-500">
-                                No tags
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                        <MetricCard label="Vehicles" value={selectedClientDetails.vehicles.length} helper="Saved to profile" />
-                        <MetricCard label="Service Jobs" value={selectedClientDetails.serviceJobs.length} helper="Known service history" />
-                        <MetricCard label="Leads" value={selectedClientDetails.leads.length} helper="Pre-booking records" />
-                        <MetricCard label="Timeline Events" value={selectedClientDetails.timelineEvents.length} helper="Latest ops activity" />
-                      </div>
-
-                      <div className="grid gap-6 xl:grid-cols-[1.02fr_0.98fr]">
-                        <div className="space-y-6">
-                          <div className="rounded-[24px] border border-neutral-200 bg-white p-4">
-                            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">Service History</div>
-                            <div className="mt-4 space-y-3">
-                              {selectedClientDetails.serviceJobs.length ? (
-                                selectedClientDetails.serviceJobs.map((job) => (
-                                  <div key={job.id} className="rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3">
-                                    <div className="flex flex-wrap items-start justify-between gap-3">
-                                      <div>
-                                        <div className="font-semibold text-brand-black">{getJobServiceDisplay(job)}</div>
-                                        <div className="mt-1 text-sm text-gray-600">{fmtDateTime(job.scheduled_at)}</div>
-                                      </div>
-                                      <div className="flex flex-wrap gap-2">
-                                        <StatusBadge status={job.ui_status || 'scheduled'} label={jobStatusLabel[job.ui_status || 'scheduled']} />
-                                        <StatusBadge status={job.payment_status || 'unpaid'} label={(job.payment_status || 'unpaid').toUpperCase()} />
-                                      </div>
-                                    </div>
-                                  </div>
-                                ))
-                              ) : (
-                                <EmptyState message="No service history yet." />
-                              )}
-                            </div>
-                          </div>
-
-                          <div className="rounded-[24px] border border-neutral-200 bg-white p-4">
-                            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">Timeline</div>
-                            <div className="mt-4 space-y-3">
-                              {selectedClientDetails.timelineEvents.length ? (
-                                selectedClientDetails.timelineEvents.map((event) => (
-                                  <div key={event.id} className="rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3">
-                                    <div className="flex items-start justify-between gap-3">
-                                      <div>
-                                        <div className="font-medium capitalize text-brand-black">{event.event_type.replace(/_/g, ' ')}</div>
-                                        <div className="mt-1 text-xs text-gray-500">{fmtDateTime(event.created_at)}</div>
-                                      </div>
-                                    </div>
-                                    {event.note && <div className="mt-2 text-sm text-gray-600">{event.note}</div>}
-                                  </div>
-                                ))
-                              ) : (
-                                <EmptyState message="No timeline events yet." />
-                              )}
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="space-y-6">
-                          <div className="rounded-[24px] border border-neutral-200 bg-white p-4">
-                            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">Vehicle Garage</div>
-                            <div className="mt-4 flex flex-wrap gap-2">
-                              {selectedClientDetails.vehicles.length ? (
-                                selectedClientDetails.vehicles.map((vehicle) => (
-                                  <span key={vehicle.id} className="rounded-full border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-gray-700">
-                                    {vehicleLabel(vehicle)}
-                                  </span>
-                                ))
-                              ) : (
-                                <span className="text-sm text-gray-500">No saved vehicles.</span>
-                              )}
-                            </div>
-                          </div>
-
-                          <div className="rounded-[24px] border border-neutral-200 bg-white p-4">
-                            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">Billing Snapshot</div>
-                            <div className="mt-4 text-sm text-gray-600">
-                              {selectedClientDetails.billingRecords.length
-                                ? `${selectedClientDetails.billingRecords.length} billing record${selectedClientDetails.billingRecords.length === 1 ? '' : 's'} available for review.`
-                                : 'No billing records stored yet.'}
-                            </div>
-                          </div>
-
-                          <div className="rounded-[24px] border border-neutral-200 bg-white p-4">
-                            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">Customer Notes</div>
-                            <div className="mt-4 space-y-3">
-                              <TextArea value={customerNotes} onChange={setCustomerNotes} rows={10} placeholder="Regular customer, prefers interior detail, requested morning drop-off..." />
-                              <button
-                                type="button"
-                                onClick={saveCustomerNotes}
-                                disabled={savingCustomer}
-                                className="rounded-2xl bg-brand-mclaren px-4 py-3 text-sm font-semibold text-white transition hover:bg-brand-mclaren-dark disabled:cursor-not-allowed disabled:opacity-60"
-                              >
-                                {savingCustomer ? 'Saving Notes...' : 'Save Notes'}
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <EmptyState message="Select a customer to view CRM details." />
-                  )}
-                </Panel>
-              </div>
-            )}
-
-            {activeTab === 'payments' && (
-              <div className="space-y-6">
-                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                  <MetricCard
-                    label="Unpaid Jobs"
-                    value={unpaidPaymentJobs.length}
-                    helper="Payment follow-up required"
-                    accent
-                  />
-                  <MetricCard
-                    label="Unpaid Total"
-                    value={currency(unpaidPaymentJobs.reduce((sum, job) => sum + getJobEstimatedAmount(job), 0))}
-                    helper="Open receivables"
-                    accent
-                  />
-                  <MetricCard
-                    label="Paid Jobs"
-                    value={paidPaymentJobs.length}
-                    helper="Closed payments"
-                  />
-                  <MetricCard
-                    label="Paid Total"
-                    value={currency(paidPaymentJobs.reduce((sum, job) => sum + getJobEstimatedAmount(job), 0))}
-                    helper="Recorded as paid"
-                  />
-                </div>
-
-                <div className="grid gap-6 xl:grid-cols-2">
-                  <Panel title="Needs Follow-up" subtitle="Unpaid bookings sorted by highest amount first">
-                    <div className="space-y-3">
-                      {unpaidPaymentJobs.length ? (
-                        unpaidPaymentJobs.map((job) => (
-                          <div key={job.id} className="rounded-[24px] border border-neutral-200 bg-white px-4 py-4">
-                            <div className="flex flex-wrap items-start justify-between gap-3">
-                              <div>
-                                <div className="font-semibold text-brand-black">{job.client_name}</div>
-                                <div className="mt-1 text-sm text-gray-600">{getJobServiceDisplay(job)}</div>
-                                <div className="mt-2 flex flex-wrap gap-3 text-xs text-gray-500">
-                                  <span>{fmtDateTime(job.scheduled_at)}</span>
-                                  <span>{fmtRelative(job.scheduled_at)}</span>
-                                </div>
-                              </div>
-                              <div className="text-right">
-                                <div className="text-lg font-semibold text-brand-black">{currency(getJobEstimatedAmount(job))}</div>
-                                <div className="mt-2">
-                                  <StatusBadge status={job.payment_status || 'unpaid'} label={(job.payment_status || 'unpaid').toUpperCase()} />
-                                </div>
-                              </div>
-                            </div>
-                            <div className="mt-4 flex flex-wrap gap-2">
-                              <button
-                                type="button"
-                                onClick={() => updateJob(job.id, { paymentStatus: 'paid' })}
-                                className="rounded-xl bg-brand-black px-3 py-2 text-sm font-semibold text-white transition hover:bg-black"
-                              >
-                                Mark as Paid
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setSelectedScheduleJobId(job.id);
-                                  setActiveTab('jobs');
-                                }}
-                                className="rounded-xl border border-neutral-200 px-3 py-2 text-sm font-semibold text-gray-700 hover:border-brand-mclaren hover:text-brand-mclaren"
-                              >
-                                Open Job
-                              </button>
-                            </div>
-                          </div>
-                        ))
-                      ) : (
-                        <EmptyState message="No unpaid jobs need payment follow-up." />
-                      )}
-                    </div>
-                  </Panel>
-
-                  <Panel title="Paid History" subtitle="Most recently updated paid bookings">
-                    <div className="space-y-3">
-                      {paidPaymentJobs.length ? (
-                        paidPaymentJobs.map((job) => (
-                          <div key={job.id} className="rounded-[24px] border border-neutral-200 bg-neutral-50 px-4 py-4">
-                            <div className="flex flex-wrap items-start justify-between gap-3">
-                              <div>
-                                <div className="font-semibold text-brand-black">{job.client_name}</div>
-                                <div className="mt-1 text-sm text-gray-600">{getJobServiceDisplay(job)}</div>
-                                <div className="mt-2 flex flex-wrap gap-3 text-xs text-gray-500">
-                                  <span>{fmtDateTime(job.scheduled_at)}</span>
-                                  <span>Updated {fmtRelative(job.updated_at || job.scheduled_at)}</span>
-                                </div>
-                              </div>
-                              <div className="text-right">
-                                <div className="text-lg font-semibold text-brand-black">{currency(getJobEstimatedAmount(job))}</div>
-                                <div className="mt-2">
-                                  <StatusBadge status="paid" label="PAID" />
-                                </div>
-                              </div>
-                            </div>
-                            <div className="mt-4 flex flex-wrap gap-2">
-                              <button
-                                type="button"
-                                onClick={() => updateJob(job.id, { paymentStatus: 'unpaid' })}
-                                className="rounded-xl border border-neutral-200 px-3 py-2 text-sm font-semibold text-gray-700 hover:border-brand-mclaren hover:text-brand-mclaren"
-                              >
-                                Mark Unpaid
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setSelectedScheduleJobId(job.id);
-                                  setActiveTab('jobs');
-                                }}
-                                className="rounded-xl border border-neutral-200 px-3 py-2 text-sm font-semibold text-gray-700 hover:border-brand-mclaren hover:text-brand-mclaren"
-                              >
-                                Open Job
-                              </button>
-                            </div>
-                          </div>
-                        ))
-                      ) : (
-                        <EmptyState message="No paid jobs recorded yet." />
-                      )}
-                    </div>
-                  </Panel>
-                </div>
-              </div>
-            )}
-
-            {activeTab === 'notifications' && (
-              <div className="space-y-6">
-                <div className="grid gap-4 md:grid-cols-3">
-                  <MetricCard label="Unread Inbox" value={unreadInboxNotifications.length} helper="Booking and ops alerts" accent />
-                  <MetricCard label="AI Review Items" value={reviewRequiredRuns.length} helper="Human review required" accent />
-                  <MetricCard label="Read Archive" value={readInboxNotifications.length} helper="Resolved or acknowledged" />
-                </div>
-
-                <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
-                  <Panel title="AI Review Queue" subtitle="Low-confidence outputs, missing-info warnings, and review-required AI runs">
-                  <div className="space-y-3">
-                    {reviewRequiredRuns.length ? (
-                      reviewRequiredRuns.map((run) => (
-                        <div key={run.id} className="rounded-2xl border border-neutral-200 px-4 py-4">
-                          <div className="flex flex-wrap items-start justify-between gap-3">
-                            <div>
-                              <div className="flex items-center gap-2">
-                                <div className="font-semibold text-brand-black">{run.feature_name.replace(/_/g, ' ')}</div>
-                                <StatusBadge status={run.status === 'failed' ? 'closed_lost' : 'booked'} label={run.status === 'failed' ? 'Failed' : 'Review Required'} />
-                              </div>
-                              <div className="mt-1 text-sm text-gray-600">
-                                {run.entity_type} | {run.entity_id}
-                              </div>
-                              <div className="mt-2 text-xs text-gray-500">
-                                Confidence: {formatConfidence(run.confidence)} | {fmtDateTime(run.created_at)}
-                              </div>
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                              {run.status !== 'failed' && (
-                                <button
-                                  type="button"
-                                  onClick={() => applyAiRun(run.id, 0)}
-                                  disabled={aiBusyKey === `apply-run:${run.id}:0`}
-                                  className="rounded-xl bg-brand-black px-3 py-2 text-xs font-semibold text-white hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
-                                >
-                                  {aiBusyKey === `apply-run:${run.id}:0` ? 'Applying...' : 'Apply First Action'}
-                                </button>
-                              )}
-                              <button
-                                type="button"
-                                onClick={() => dismissAiRunAction(run.id)}
-                                disabled={aiBusyKey === `dismiss-run:${run.id}`}
-                                className="rounded-xl border border-neutral-200 px-3 py-2 text-xs font-semibold text-gray-700 hover:border-brand-mclaren hover:text-brand-mclaren disabled:cursor-not-allowed disabled:opacity-60"
-                              >
-                                {aiBusyKey === `dismiss-run:${run.id}` ? 'Dismissing...' : 'Dismiss'}
-                              </button>
-                            </div>
-                          </div>
-                          {toRecord(run.output_snapshot).summary && (
-                            <div className="mt-3 rounded-2xl border border-neutral-200 bg-neutral-50 px-3 py-3 text-sm text-gray-700">
-                              {readMetaString(toRecord(run.output_snapshot).summary)}
-                            </div>
-                          )}
-                          {readMetaStringArray(toRecord(run.output_snapshot).warnings).length > 0 && (
-                            <div className="mt-3 flex flex-wrap gap-2">
-                              {readMetaStringArray(toRecord(run.output_snapshot).warnings).map((warning) => (
-                                <span key={warning} className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-amber-700">
-                                  {warning}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                          {readMetaStringArray(toRecord(run.output_snapshot).missingInfo).length > 0 && (
-                            <div className="mt-3 text-xs text-gray-600">
-                              Missing: {readMetaStringArray(toRecord(run.output_snapshot).missingInfo).join(' ')}
-                            </div>
-                          )}
-                        </div>
-                      ))
-                    ) : (
-                      <EmptyState message="No AI outputs currently require review." />
-                    )}
-                  </div>
-                  </Panel>
-
-                  <div className="space-y-6">
-                    <Panel title="Unread Inbox" subtitle="New booking alerts and upcoming appointment reminders">
-                      <div className="space-y-3">
-                        {unreadInboxNotifications.length ? (
-                          unreadInboxNotifications.map((notification) => (
-                            <div key={notification.id} className="rounded-[24px] border border-brand-mclaren/20 bg-[#fff4eb] px-4 py-4">
-                              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                                <div>
-                                  <div className="flex items-center gap-2">
-                                    <div className="font-semibold text-brand-black">{notification.title}</div>
-                                    <StatusBadge status="new_lead" label="Unread" />
-                                  </div>
-                                  <div className="mt-1 text-sm text-gray-700">{notification.message}</div>
-                                  <div className="mt-2 text-xs text-gray-500">
-                                    {notification.category} | {fmtDateTime(notification.created_at)}
-                                  </div>
-                                </div>
-                                <button
-                                  type="button"
-                                  onClick={() => markNotificationRead(notification.id)}
-                                  className="rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:border-brand-mclaren hover:text-brand-mclaren"
-                                >
-                                  Mark Read
-                                </button>
-                              </div>
-                            </div>
-                          ))
-                        ) : (
-                          <EmptyState message="No unread notifications in the inbox." />
-                        )}
-                      </div>
-                    </Panel>
-
-                    <Panel title="Read Archive" subtitle="Recent acknowledged notifications">
-                      <div className="space-y-3">
-                        {readInboxNotifications.length ? (
-                          readInboxNotifications.map((notification) => (
-                            <div key={notification.id} className="rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-4">
-                              <div className="font-semibold text-brand-black">{notification.title}</div>
-                              <div className="mt-1 text-sm text-gray-600">{notification.message}</div>
-                              <div className="mt-2 text-xs text-gray-500">
-                                {notification.category} | {fmtDateTime(notification.created_at)}
-                              </div>
-                            </div>
-                          ))
-                        ) : (
-                          <EmptyState message="No read notifications yet." />
-                        )}
-                      </div>
-                    </Panel>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {activeTab === 'reports' && (
-              <div className="grid gap-6 lg:grid-cols-[0.92fr_1.08fr]">
-                <Panel title="Revenue Snapshot" subtitle="Simple weekly and monthly performance">
-                  {reports ? (
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <MetricCard label="Weekly Estimated Revenue" value={currency(reports.summary.weeklyEstimatedRevenue)} helper="Completed jobs from the last 7 days" accent />
-                      <MetricCard label="Monthly Estimated Revenue" value={currency(reports.summary.monthlyEstimatedRevenue)} helper="Completed jobs this month" accent />
-                      <MetricCard label="Vehicles Detailed" value={reports.summary.vehiclesDetailedCount} helper="Completed jobs in the selected report window" />
-                      <MetricCard label="Completed Jobs (7 days)" value={reports.summary.completedJobsCount} helper="Weekly completed service count" />
-                    </div>
-                  ) : (
-                    <EmptyState message="Reports are not available." />
-                  )}
-                </Panel>
-
-                <Panel title="Status Breakdown" subtitle="Operational mix of recent jobs">
-                  {reports ? (
-                    <div className="space-y-3">
-                      {Object.entries(reports.jobsByStatus).map(([status, count]) => (
-                        <div key={status} className="flex items-center justify-between rounded-2xl border border-neutral-200 px-4 py-3">
-                          <div className="flex items-center gap-3">
-                            <StatusBadge status={status} />
-                            <span className="text-sm font-medium text-gray-700">{status.replace(/_/g, ' ')}</span>
-                          </div>
-                          <span className="text-sm font-semibold text-brand-black">{count}</span>
-                        </div>
-                      ))}
-                      <button
-                        type="button"
-                        onClick={() => reports && exportCsv('service-jobs-report.csv', reports.csvRows.jobs)}
-                        className="mt-2 rounded-2xl bg-brand-black px-4 py-3 text-sm font-semibold text-white transition hover:bg-black"
-                      >
-                        Export Jobs CSV
-                      </button>
-                    </div>
-                  ) : (
-                    <EmptyState message="No report data available." />
-                  )}
-                </Panel>
-
-                <Panel title="AI Manager Briefs" subtitle="Generate grounded daily and weekly operational summaries from the live queue">
-                  <div className="space-y-4">
-                    <div className="flex flex-wrap gap-3">
-                      <button
-                        type="button"
-                        onClick={() => runManagerBrief('daily')}
-                        disabled={aiBusyKey === 'manager-brief:daily'}
-                        className="inline-flex items-center gap-2 rounded-2xl bg-brand-mclaren px-4 py-3 text-sm font-semibold text-white transition hover:bg-brand-mclaren-dark disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        <Bot className="h-4 w-4" />
-                        {aiBusyKey === 'manager-brief:daily' ? 'Generating Daily...' : 'Generate Daily Brief'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => runManagerBrief('weekly')}
-                        disabled={aiBusyKey === 'manager-brief:weekly'}
-                        className="inline-flex items-center gap-2 rounded-2xl border border-neutral-200 px-4 py-3 text-sm font-semibold text-gray-700 transition hover:border-brand-mclaren hover:text-brand-mclaren disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        <MessageSquareText className="h-4 w-4" />
-                        {aiBusyKey === 'manager-brief:weekly' ? 'Generating Weekly...' : 'Generate Weekly Brief'}
-                      </button>
-                    </div>
-
-                    <ManagerBriefCard
-                      title="Daily Brief"
-                      suggestion={dailyBrief}
-                      emptyMessage="No daily brief generated yet."
-                    />
-                    <ManagerBriefCard
-                      title="Weekly Brief"
-                      suggestion={weeklyBrief}
-                      emptyMessage="No weekly brief generated yet."
-                    />
-                  </div>
-                </Panel>
-              </div>
-            )}
-
-            {activeTab === 'copilot' && (
-              <div className="grid gap-6 xl:grid-cols-[0.82fr_1.18fr]">
-                <Panel title="Ops Copilot" subtitle="Ask grounded questions about live schedules, payments, notes, leads, and revenue">
-                  <div className="space-y-5">
-                    <div className="rounded-[24px] border border-brand-mclaren/20 bg-[#fff4eb] p-4">
-                      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-mclaren">
-                        Grounded Mode
-                      </div>
-                      <p className="mt-2 text-sm leading-6 text-gray-700">
-                        Phase 1 answers from live Supabase jobs, leads, clients, and payment records. It does not invent numbers outside the current dashboard data.
-                      </p>
-                    </div>
-
-                    <div className="space-y-3">
-                      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">
-                        Suggested Questions
-                      </div>
-                      {opsCopilotPromptSuggestions.map((prompt) => (
-                        <button
-                          key={prompt}
-                          type="button"
-                          onClick={() => submitOpsChatQuestion(prompt)}
-                          disabled={opsChatSubmitting}
-                          className="block w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-left text-sm font-medium text-gray-700 transition hover:border-brand-mclaren hover:text-brand-mclaren disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          {prompt}
-                        </button>
-                      ))}
-                    </div>
-
-                    <div className="rounded-[24px] border border-neutral-200 bg-neutral-50 p-4">
-                      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">
-                        Best For
-                      </div>
-                      <div className="mt-3 space-y-2 text-sm text-gray-600">
-                        <div>Pending job counts and next appointments</div>
-                        <div>Paid versus unpaid customer summaries</div>
-                        <div>Notes, intake details, and enquiry message lookups</div>
-                        <div>Pickup and drop-off request traceability</div>
-                        <div>Expected revenue and highest-value bookings</div>
-                      </div>
-                    </div>
-                  </div>
-                </Panel>
-
-                <Panel title="Live Chat" subtitle="Ask natural-language questions and review the supporting facts">
-                  <div className="space-y-4">
-                    <div className="max-h-[620px] space-y-4 overflow-y-auto pr-1">
-                      {opsChatMessages.map((message) => (
-                        <div
-                          key={message.id}
-                          className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                        >
-                          <div
-                            className={`max-w-3xl rounded-[24px] border px-4 py-4 shadow-sm ${
-                              message.role === 'user'
-                                ? 'border-brand-mclaren bg-brand-mclaren text-white'
-                                : 'border-neutral-200 bg-neutral-50 text-gray-800'
-                            }`}
-                          >
-                            <div className="flex flex-wrap items-center gap-2">
-                              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] opacity-80">
-                                {message.role === 'user' ? 'You' : 'Ops Copilot'}
-                              </div>
-                              {message.role === 'assistant' && message.mode && (
-                                <span className="rounded-full border border-neutral-200 bg-white px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-500">
-                                  {message.mode === 'ai' ? 'AI Answer' : 'Direct Summary'}
-                                </span>
-                              )}
-                            </div>
-
-                            <div className="mt-2 text-sm leading-6">{message.content}</div>
-
-                            {message.warning && message.role === 'assistant' && (
-                              <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                                {message.warning}
-                              </div>
-                            )}
-
-                            {message.supportingFacts && message.supportingFacts.length > 0 && (
-                              <div className="mt-4 space-y-2">
-                                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] opacity-70">
-                                  Supporting Facts
-                                </div>
-                                {message.supportingFacts.map((fact) => (
-                                  <div
-                                    key={`${message.id}-${fact}`}
-                                    className={`rounded-xl px-3 py-2 text-xs leading-5 ${
-                                      message.role === 'user'
-                                        ? 'bg-white/15 text-white/90'
-                                        : 'border border-neutral-200 bg-white text-gray-600'
-                                    }`}
-                                  >
-                                    {fact}
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-
-                            {message.followUpQuestions && message.followUpQuestions.length > 0 && (
-                              <div className="mt-4 space-y-2">
-                                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] opacity-70">
-                                  Follow Up
-                                </div>
-                                <div className="flex flex-wrap gap-2">
-                                  {message.followUpQuestions.map((prompt) => (
-                                    <button
-                                      key={`${message.id}-${prompt}`}
-                                      type="button"
-                                      onClick={() => submitOpsChatQuestion(prompt)}
-                                      disabled={opsChatSubmitting}
-                                      className={`rounded-full px-3 py-2 text-xs font-semibold transition ${
-                                        message.role === 'user'
-                                          ? 'border border-white/30 bg-white/10 text-white'
-                                          : 'border border-neutral-200 bg-white text-gray-700 hover:border-brand-mclaren hover:text-brand-mclaren'
-                                      } disabled:cursor-not-allowed disabled:opacity-60`}
-                                    >
-                                      {prompt}
-                                    </button>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div className="rounded-[24px] border border-neutral-200 bg-white p-4">
-                      <TextArea
-                        label="Ask the copilot"
-                        value={opsChatInput}
-                        onChange={setOpsChatInput}
-                        rows={4}
-                        placeholder="Who requested pickup recently, which unpaid customers mentioned smoke odor, and how much expected revenue are we carrying?"
-                      />
-                      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-                        <div className="text-xs text-gray-500">
-                          Answers use current dashboard records, not public website content.
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => submitOpsChatQuestion()}
-                          disabled={opsChatSubmitting || !opsChatInput.trim()}
-                          className="inline-flex items-center gap-2 rounded-2xl bg-brand-mclaren px-4 py-3 text-sm font-semibold text-white transition hover:bg-brand-mclaren-dark disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          <MessageSquareText className="h-4 w-4" />
-                          {opsChatSubmitting ? 'Thinking...' : 'Ask Copilot'}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </Panel>
-              </div>
-            )}
-          </>
         )}
       </div>
     </AuthGate>
   );
 };
 
-const AiStateSummary: React.FC<{ state: AiFeatureState | null; emptyMessage: string }> = ({
-  state,
-  emptyMessage,
-}) => {
-  if (!state) {
-    return (
-      <div className="rounded-2xl border border-dashed border-neutral-300 bg-neutral-50 px-3 py-3 text-xs text-gray-500">
-        {emptyMessage}
-      </div>
-    );
-  }
+/* ?? Schedule View ??????????????????????????????????????????????????? */
 
-  return (
-    <div className="rounded-2xl border border-neutral-200 bg-neutral-50 p-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500">AI Summary</div>
-        <StatusBadge status={state.confidence >= 0.7 ? 'completed' : 'booked'} label={`Confidence ${formatConfidence(state.confidence)}`} />
-        {state.approvalStatus === 'applied' && <StatusBadge status="completed" label="Applied" />}
-        {state.approvalStatus === 'dismissed' && <StatusBadge status="cancelled" label="Dismissed" />}
+const ScheduleView: React.FC<{
+  board: ScheduleBoardResponse | null; filtered: ScheduleBoardJob[]; selectedId: string | null;
+  onSelect: (id: string) => void; selectedJob: ScheduleBoardJob | null;
+  clientDetails: CustomerWorkspaceResponse | null; onOpen360: () => void;
+  timeZone: string;
+}> = ({ board, filtered, selectedId, onSelect, selectedJob, clientDetails, onOpen360, timeZone }) => (
+  <div className="grid gap-5 xl:grid-cols-[1fr_380px]">
+    {/* List */}
+    <Card>
+      <div className="border-b border-black/[0.04] px-5 py-3">
+        <span className="text-[13px] font-medium text-[#86868b]">{filtered.length} appointment{filtered.length === 1 ? '' : 's'}</span>
       </div>
-      <div className="mt-2 text-sm text-gray-700">{state.summary}</div>
-      {state.recommendedNextAction && (
-        <div className="mt-2 rounded-xl border border-neutral-200 bg-white px-3 py-2 text-xs text-gray-600">
-          <span className="font-semibold text-brand-black">Next:</span> {state.recommendedNextAction}
-        </div>
-      )}
-      {state.recommendations.length > 0 && (
-        <div className="mt-3 space-y-2">
-          {state.recommendations.slice(0, 2).map((recommendation) => (
-            <div key={`${recommendation.title}-${recommendation.kind}`} className="rounded-xl border border-neutral-200 bg-white px-3 py-2">
-              <div className="text-xs font-semibold uppercase tracking-[0.12em] text-gray-500">
-                {recommendation.kind.replace(/_/g, ' ')} | {recommendation.priority}
+      <div className="max-h-[calc(100vh-17rem)] overflow-y-auto">
+        {board?.groups.length ? board.groups.map((g) => {
+          const vis = g.jobs.filter((j) => filtered.some((f) => f.id === j.id));
+          if (!vis.length) return null;
+          return (
+            <div key={g.key}>
+              <div className="sticky top-0 z-10 border-b border-black/[0.04] bg-[#f5f5f7]/90 px-5 py-2 backdrop-blur-sm">
+                <span className="text-[12px] font-semibold uppercase tracking-wide text-[#86868b]">{fmtDateHeading(g.date, timeZone)}</span>
               </div>
-              <div className="mt-1 text-sm font-semibold text-brand-black">{recommendation.title}</div>
-              <div className="mt-1 text-xs text-gray-600">{recommendation.detail}</div>
+              {vis.map((j) => (
+                <button key={j.id} type="button" onClick={() => onSelect(j.id)} className={`w-full border-b border-black/[0.04] px-5 py-3.5 text-left transition-colors ${selectedId === j.id ? 'bg-[#0071e3]/[0.05]' : 'hover:bg-black/[0.02]'}`}>
+                  <div className="flex items-center gap-3">
+                    <span className={`h-2 w-2 flex-none rounded-full ${statusDot(j.uiStatus)}`} />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-baseline justify-between gap-3">
+                        <span className="truncate text-[14px] font-medium text-[#1d1d1f]">{j.clientName}</span>
+                        <span className="flex-none text-[12px] tabular-nums text-[#86868b]">{fmtTime(j.scheduledAt, timeZone)}</span>
+                      </div>
+                      <div className="mt-0.5 flex items-center gap-1.5 text-[12px] text-[#86868b]">
+                        <span className="truncate">{j.serviceType}</span>
+                        {j.vehicleLabel && j.vehicleLabel !== 'Not captured' && <><span className="text-black/15">&middot;</span><span className="truncate">{j.vehicleLabel}</span></>}
+                      </div>
+                    </div>
+                  </div>
+                </button>
+              ))}
             </div>
-          ))}
-        </div>
-      )}
-      {state.missingInfo.length > 0 && (
-        <div className="mt-3 space-y-1">
-          {state.missingInfo.map((item) => (
-            <div key={item} className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-              {item}
-            </div>
-          ))}
-        </div>
-      )}
-      {state.warnings.length > 0 && (
-        <div className="mt-3 flex flex-wrap gap-2">
-          {state.warnings.map((warning) => (
-            <span key={warning} className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-amber-700">
-              {warning}
-            </span>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-};
+          );
+        }) : <Empty msg="No appointments in this range." />}
+      </div>
+    </Card>
 
-const ManagerBriefCard: React.FC<{
-  title: string;
-  suggestion: AiSuggestion | null;
-  emptyMessage: string;
-}> = ({ title, suggestion, emptyMessage }) => (
-  <div className="rounded-[24px] border border-neutral-200 bg-neutral-50 p-4">
-    <div className="flex flex-wrap items-center gap-2">
-      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">{title}</div>
-      {suggestion && <StatusBadge status={suggestion.confidence >= 0.7 ? 'completed' : 'booked'} label={`Confidence ${formatConfidence(suggestion.confidence)}`} />}
-    </div>
-    {suggestion ? (
-      <div className="mt-3 space-y-3">
-        <div className="text-sm text-gray-700">{suggestion.summary}</div>
-        {suggestion.recommendations.length > 0 && (
-          <div className="space-y-2">
-            {suggestion.recommendations.slice(0, 3).map((recommendation) => (
-              <div key={`${title}-${recommendation.title}`} className="rounded-xl border border-neutral-200 bg-white px-3 py-2">
-                <div className="text-xs font-semibold uppercase tracking-[0.12em] text-gray-500">
-                  {recommendation.kind.replace(/_/g, ' ')} | {recommendation.priority}
-                </div>
-                <div className="mt-1 text-sm font-semibold text-brand-black">{recommendation.title}</div>
-                <div className="mt-1 text-xs text-gray-600">{recommendation.detail}</div>
+    {/* Detail */}
+    <div className="lg:sticky lg:top-6 lg:self-start">
+      {selectedJob ? (
+        <div className="space-y-4">
+          <Card>
+            <div className="px-5 pt-5 pb-4">
+              <h2 className="text-xl font-semibold tracking-tight text-[#1d1d1f]">{selectedJob.clientName}</h2>
+              <p className="mt-0.5 text-[13px] text-[#86868b]">{selectedJob.serviceType}</p>
+            </div>
+            <div className="border-t border-black/[0.04] px-5 py-4">
+              <div className="grid grid-cols-2 gap-y-4 gap-x-6">
+                <DField label="Time" value={fmtTimeRange(selectedJob.scheduledAt, selectedJob.scheduledEndAt, timeZone)} />
+                <DField label="Status" value={selectedJob.uiStatus.charAt(0).toUpperCase() + selectedJob.uiStatus.slice(1)} />
+                <DField label="Vehicle" value={selectedJob.vehicleLabel || 'Not provided'} />
+                <DField label="Amount" value={currency(selectedJob.estimatedAmount)} />
               </div>
-            ))}
-          </div>
-        )}
-        {suggestion.warnings.length > 0 && (
-          <div className="flex flex-wrap gap-2">
-            {suggestion.warnings.map((warning) => (
-              <span key={warning} className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-amber-700">
-                {warning}
-              </span>
-            ))}
-          </div>
-        )}
-      </div>
-    ) : (
-      <div className="mt-3 text-sm text-gray-500">{emptyMessage}</div>
-    )}
-  </div>
-);
-
-const Panel: React.FC<{ title: string; subtitle?: string; children: React.ReactNode }> = ({ title, subtitle, children }) => (
-  <section className="dashboard-panel relative overflow-hidden rounded-[30px] border border-neutral-200/90 bg-[linear-gradient(180deg,#ffffff_0%,#fcfcfd_100%)] p-5 shadow-[0_20px_65px_rgba(15,23,42,0.07)] sm:p-6">
-    <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-brand-mclaren/40 to-transparent" />
-    <div className="mb-5">
-      <div className="mb-3 h-1.5 w-16 rounded-full bg-brand-mclaren/20" />
-      <h2 className="font-display text-2xl font-semibold uppercase text-brand-black">{title}</h2>
-      {subtitle && <p className="mt-2 text-sm text-gray-600">{subtitle}</p>}
-    </div>
-    {children}
-  </section>
-);
-
-const MetricCard: React.FC<{
-  label: string;
-  value: React.ReactNode;
-  helper?: string;
-  accent?: boolean;
-  onClick?: () => void;
-}> = ({ label, value, helper, accent, onClick }) => {
-  const sharedClassName = `dashboard-metric-card rounded-[24px] border p-5 text-left transition ${
-    accent
-      ? 'border-brand-mclaren/20 bg-[linear-gradient(180deg,#fff4eb_0%,#ffffff_100%)]'
-      : 'border-neutral-200 bg-[linear-gradient(180deg,#ffffff_0%,#fcfcfd_100%)]'
-  } ${onClick ? 'hover:-translate-y-0.5 hover:border-brand-mclaren hover:shadow-[0_12px_30px_rgba(15,23,42,0.08)]' : ''}`;
-
-  const content = (
-    <>
-      <div className="flex items-center justify-between gap-3">
-        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500">{label}</div>
-        <span className={`h-2.5 w-2.5 rounded-full ${accent ? 'bg-brand-mclaren' : 'bg-brand-black/15'}`} />
-      </div>
-      <div className="mt-3 text-3xl font-semibold text-brand-black">{value}</div>
-      {helper && <div className="mt-2 text-sm text-gray-600">{helper}</div>}
-    </>
-  );
-
-  return onClick ? (
-    <button type="button" onClick={onClick} className={sharedClassName}>
-      {content}
-    </button>
-  ) : (
-    <div className={sharedClassName}>{content}</div>
-  );
-};
-
-const InsightCard: React.FC<{
-  eyebrow: string;
-  title: React.ReactNode;
-  body: React.ReactNode;
-  detail?: React.ReactNode;
-  accent?: boolean;
-  onClick?: () => void;
-}> = ({ eyebrow, title, body, detail, accent, onClick }) => {
-  const className = `dashboard-insight-card rounded-[26px] border px-5 py-5 text-left transition ${
-    accent
-      ? 'border-brand-mclaren/20 bg-[linear-gradient(180deg,#fff4eb_0%,#ffffff_100%)]'
-      : 'border-neutral-200 bg-[linear-gradient(180deg,#ffffff_0%,#fcfcfd_100%)]'
-  } ${onClick ? 'hover:-translate-y-0.5 hover:border-brand-mclaren hover:shadow-[0_12px_30px_rgba(15,23,42,0.08)]' : ''}`;
-
-  const content = (
-    <>
-      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500">{eyebrow}</div>
-      <div className="mt-3 text-xl font-semibold text-brand-black">{title}</div>
-      <div className="mt-2 text-sm leading-6 text-gray-600">{body}</div>
-      {detail ? <div className="mt-4 text-xs font-medium uppercase tracking-[0.12em] text-gray-500">{detail}</div> : null}
-    </>
-  );
-
-  return onClick ? (
-    <button type="button" onClick={onClick} className={className}>
-      {content}
-    </button>
-  ) : (
-    <div className={className}>{content}</div>
-  );
-};
-
-const DataTable: React.FC<{ columns: string[]; rows: React.ReactNode[] }> = ({ columns, rows }) => (
-  <div className="dashboard-table overflow-hidden rounded-[24px] border border-neutral-200 bg-white shadow-[0_10px_30px_rgba(15,23,42,0.05)]">
-    <div className="overflow-x-auto">
-      <table className="min-w-full divide-y divide-neutral-200">
-        <thead className="bg-[linear-gradient(180deg,#fafafa_0%,#f5f5f5_100%)]">
-          <tr>
-            {columns.map((column) => (
-              <th key={column} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">
-                {column}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody className="bg-white">
-          {rows.length ? rows : (
-            <tr>
-              <td className="px-4 py-8 text-sm text-gray-500" colSpan={columns.length}>No records yet.</td>
-            </tr>
+            </div>
+            {selectedJob.pickupRequested && <div className="border-t border-black/[0.04] px-5 py-3"><div className="flex items-center gap-2 text-[12px]"><span className="h-1.5 w-1.5 rounded-full bg-[#0071e3]" /><span className="font-medium text-[#1d1d1f]">Pickup requested</span></div></div>}
+            {selectedJob.notes && <div className="border-t border-black/[0.04] px-5 py-4"><span className="text-[11px] font-medium text-[#86868b]">Notes</span><p className="mt-1 whitespace-pre-line text-[13px] leading-relaxed text-[#1d1d1f]/80">{selectedJob.notes}</p></div>}
+          </Card>
+          {selectedJob.clientId && (
+            <button type="button" onClick={onOpen360} className="flex w-full items-center justify-between rounded-xl border border-black/[0.04] bg-white px-5 py-3 text-[13px] font-medium text-[#1d1d1f] shadow-sm transition-colors hover:bg-[#f5f5f7]">
+              <span>Customer 360 &middot; {clientDetails?.client.name ?? 'Loading...'}</span>
+              <ChevronRight className="h-4 w-4 text-[#86868b]" />
+            </button>
           )}
-        </tbody>
-      </table>
+        </div>
+      ) : (
+        <Card className="flex h-56 items-center justify-center"><p className="text-[13px] text-[#86868b]">Select a client to view details</p></Card>
+      )}
     </div>
   </div>
 );
 
-const Input: React.FC<{
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  placeholder?: string;
-  type?: string;
-  required?: boolean;
-}> = ({ label, value, onChange, placeholder, type = 'text', required = false }) => (
-  <label className="block">
-    <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">{label}</span>
-    <input
-      type={type}
-      required={required}
-      value={value}
-      onChange={(event) => onChange(event.target.value)}
-      placeholder={placeholder}
-      className="dashboard-input-control w-full rounded-2xl border border-neutral-200 px-4 py-3 text-sm text-brand-black outline-none transition focus:border-brand-mclaren"
-    />
-  </label>
-);
+/* ?? Calendar View ??????????????????????????????????????????????????? */
 
-const Select: React.FC<{
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  options: Array<{ value: string; label: string }>;
-}> = ({ label, value, onChange, options }) => (
-  <label className="block">
-    <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">{label}</span>
-    <select
-      value={value}
-      onChange={(event) => onChange(event.target.value)}
-      className="dashboard-select-control w-full rounded-2xl border border-neutral-200 px-4 py-3 text-sm text-brand-black outline-none transition focus:border-brand-mclaren"
-    >
-      {options.map((option) => (
-        <option key={option.value} value={option.value}>
-          {option.label}
-        </option>
-      ))}
-    </select>
-  </label>
-);
+const CalendarView: React.FC<{
+  board: ScheduleBoardResponse | null; filtered: ScheduleBoardJob[];
+  selectedId: string | null; onSelect: (id: string) => void;
+  onOpenBlock: (seed?: Partial<CalendarBlockForm>) => void; onDeleteBlock: (id: string) => void; deletingBlockId: string | null;
+  timeZone: string;
+}> = ({ board, filtered, selectedId, onSelect, onOpenBlock, onDeleteBlock, deletingBlockId, timeZone }) => {
+  const hours = useMemo(() => Array.from({ length: CALENDAR_END_HOUR - CALENDAR_START_HOUR }, (_, i) => CALENDAR_START_HOUR + i), []);
+  const [draftBlock, setDraftBlock] = useState<{ dayKey: string; dateKey: string; startMinutes: number; endMinutes: number } | null>(null);
+  const dragRef = useRef<{ dayKey: string; dateKey: string; anchorMinutes: number } | null>(null);
 
-const ServiceCatalogField: React.FC<{
-  label: string;
-  serviceCatalogId: string;
-  serviceAddonIds: string[];
-  customServiceType: string;
-  groupedPrimaryOfferings: Array<{ label: string; offerings: ServiceOffering[] }>;
-  addOnOfferings: ServiceOffering[];
-  onServiceCatalogIdChange: (value: string) => void;
-  onServiceAddonIdsChange: (value: string[]) => void;
-  onCustomServiceTypeChange: (value: string) => void;
-}> = ({
-  label,
-  serviceCatalogId,
-  serviceAddonIds,
-  customServiceType,
-  groupedPrimaryOfferings,
-  addOnOfferings,
-  onServiceCatalogIdChange,
-  onServiceAddonIdsChange,
-  onCustomServiceTypeChange,
-}) => {
-  const allowAddOns = Boolean(serviceCatalogId) && serviceCatalogId !== 'custom';
-
-  const toggleAddOn = (offeringId: string) => {
-    if (!allowAddOns) return;
-    onServiceAddonIdsChange(
-      serviceAddonIds.includes(offeringId)
-        ? serviceAddonIds.filter((id) => id !== offeringId)
-        : [...serviceAddonIds, offeringId]
+  const days = useMemo(() => {
+    if (!board) return [];
+    const jobDays = board.groups
+      .filter((g) => g.date)
+      .map((g) => ({
+        key: getTimeZoneDateKey(g.date!, timeZone),
+        dateKey: getTimeZoneDateKey(g.date!, timeZone),
+        label: g.label,
+        jobs: g.jobs.filter((j) => filtered.some((f) => f.id === j.id) && j.scheduledAt),
+      }));
+    const dayMap = new Map<string, { key: string; dateKey: string; label: string; jobs: ScheduleBoardJob[] }>(
+      jobDays.map((day) => [day.key, day])
     );
+
+    board.blocks.forEach((block) => {
+      let cursorKey = getTimeZoneDateKey(block.startAt, timeZone);
+      const endKey = getTimeZoneDateKey(block.endAt, timeZone);
+      while (cursorKey && cursorKey <= endKey) {
+        if (!dayMap.has(cursorKey)) {
+          dayMap.set(cursorKey, {
+            key: cursorKey,
+            dateKey: cursorKey,
+            label: fmtDateHeading(cursorKey, timeZone),
+            jobs: [],
+          });
+        }
+        cursorKey = shiftTimeZoneDateKey(cursorKey, 1, timeZone);
+      }
+    });
+
+    return Array.from(dayMap.values()).sort((a, b) => a.dateKey.localeCompare(b.dateKey));
+  }, [board, filtered, timeZone]);
+
+  const cols = Math.max(days.length, 1);
+  const now = new Date();
+  const nowParts = getTimeZoneParts(now, timeZone);
+  const nowH = (nowParts?.hour || 0) + (nowParts?.minute || 0) / 60;
+  const nowPx = nowH >= CALENDAR_START_HOUR && nowH <= CALENDAR_END_HOUR ? (nowH - CALENDAR_START_HOUR) * HOUR_PX : null;
+  const blocks = board?.blocks || [];
+  const hourOffset = (value: string | Date) => {
+    const parts = getTimeZoneParts(value, timeZone);
+    return (parts?.hour || 0) + (parts?.minute || 0) / 60;
+  };
+
+  const readMinutesFromPointer = useCallback((event: MouseEvent | React.MouseEvent<HTMLDivElement>, container: HTMLDivElement) => {
+    const rect = container.getBoundingClientRect();
+    const y = Math.max(0, Math.min(event.clientY - rect.top, rect.height));
+    const rawMinutes = CALENDAR_START_HOUR * 60 + (y / HOUR_PX) * 60;
+    return snapMinutes(rawMinutes);
+  }, []);
+
+  const finishDraft = useCallback(() => {
+    const selection = draftBlock;
+    dragRef.current = null;
+    setDraftBlock(null);
+    if (!selection) return;
+    const startMinutes = Math.min(selection.startMinutes, selection.endMinutes);
+    const endMinutes = Math.max(selection.startMinutes, selection.endMinutes) + CALENDAR_DRAG_STEP_MINUTES;
+    const startAt = withTimeOnDate(selection.dateKey, startMinutes, timeZone);
+    const endAt = withTimeOnDate(selection.dateKey, endMinutes, timeZone);
+    onOpenBlock({
+      startAt: formatForDateTimeInput(startAt, timeZone),
+      endAt: formatForDateTimeInput(endAt, timeZone),
+    });
+  }, [draftBlock, onOpenBlock, timeZone]);
+
+  useEffect(() => {
+    if (!draftBlock) return;
+    const onMouseUp = () => finishDraft();
+    window.addEventListener('mouseup', onMouseUp);
+    return () => window.removeEventListener('mouseup', onMouseUp);
+  }, [draftBlock, finishDraft]);
+
+  const handleColumnMouseDown = (event: React.MouseEvent<HTMLDivElement>, day: { key: string; dateKey: string }) => {
+    const target = event.target as HTMLElement | null;
+    if (target?.closest('[data-calendar-event="job"]')) return;
+    if (!(event.currentTarget instanceof HTMLDivElement)) return;
+    const minutes = readMinutesFromPointer(event, event.currentTarget);
+    dragRef.current = { dayKey: day.key, dateKey: day.dateKey, anchorMinutes: minutes };
+    setDraftBlock({ dayKey: day.key, dateKey: day.dateKey, startMinutes: minutes, endMinutes: minutes });
+  };
+
+  const handleColumnMouseMove = (event: React.MouseEvent<HTMLDivElement>, day: { key: string; dateKey: string }) => {
+    const current = dragRef.current;
+    if (!current || current.dayKey !== day.key) return;
+    if (!(event.currentTarget instanceof HTMLDivElement)) return;
+    const minutes = readMinutesFromPointer(event, event.currentTarget);
+    setDraftBlock({ dayKey: day.key, dateKey: day.dateKey, startMinutes: current.anchorMinutes, endMinutes: minutes });
   };
 
   return (
     <div className="space-y-4">
-      <label className="block">
-        <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">{label}</span>
-        <select
-          required
-          value={serviceCatalogId}
-          onChange={(event) => onServiceCatalogIdChange(event.target.value)}
-          className="w-full rounded-2xl border border-neutral-200 px-4 py-3 text-sm text-brand-black outline-none transition focus:border-brand-mclaren"
-        >
-          <option value="">Select a service</option>
-          {groupedPrimaryOfferings.map((group) => (
-            <optgroup key={group.label} label={group.label}>
-              {group.offerings.map((offering) => (
-                <option key={offering.id} value={offering.id}>
-                  {offering.title} | {offering.priceLabel}
-                </option>
-              ))}
-            </optgroup>
-          ))}
-          <option value="custom">Custom service</option>
-        </select>
-      </label>
-
-      {serviceCatalogId === 'custom' && (
-        <Input
-          label="Custom Service Name"
-          value={customServiceType}
-          onChange={onCustomServiceTypeChange}
-          placeholder="Enter manual service name"
-          required
-        />
-      )}
-
-      {addOnOfferings.length > 0 && (
-        <div className="rounded-2xl border border-neutral-200 bg-neutral-50 p-4">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <div className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">Optional Add-Ons</div>
-              <p className="mt-2 text-sm text-gray-600">
-                Add-ons can be attached to a catalog service. Custom services stay manual-only.
-              </p>
-            </div>
-            {!allowAddOns && (
-              <span className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-500">
-                Select a catalog service first
-              </span>
-            )}
+      <Card>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-black/[0.04] px-5 py-4">
+          <div>
+            <div className="text-[13px] font-medium text-[#1d1d1f]">Calendar control</div>
+            <p className="mt-0.5 text-[12px] text-[#86868b]">Block time for walk-ins, doorstep jobs, or internal holds. Blocked time stays visible to the public as unavailable. All calendar dates and times are shown in Toronto time.</p>
           </div>
-          <div className="mt-4 grid gap-3 md:grid-cols-2">
-            {addOnOfferings.map((offering) => (
-              <label
-                key={offering.id}
-                className={`flex items-start gap-3 rounded-xl border px-4 py-3 ${
-                  serviceAddonIds.includes(offering.id)
-                    ? 'border-brand-mclaren bg-brand-mclaren/5'
-                    : 'border-neutral-200 bg-white'
-                } ${!allowAddOns ? 'cursor-not-allowed opacity-60' : ''}`}
-              >
-                <input
-                  type="checkbox"
-                  className="mt-1 h-4 w-4 rounded border-neutral-300 text-brand-mclaren focus:ring-brand-mclaren"
-                  checked={serviceAddonIds.includes(offering.id)}
-                  disabled={!allowAddOns}
-                  onChange={() => toggleAddOn(offering.id)}
-                />
-                <div className="min-w-0">
-                  <div className="font-semibold text-brand-black">{offering.title}</div>
-                  <div className="mt-1 text-sm text-gray-600">{offering.priceLabel}</div>
+          <button type="button" onClick={onOpenBlock} className="inline-flex items-center gap-1.5 rounded-full bg-[#1d1d1f] px-4 py-2 text-[13px] font-medium text-white transition-colors hover:bg-black">
+            <Plus className="h-3.5 w-3.5" /> Block time
+          </button>
+        </div>
+
+        {/* Day headers */}
+        <div className="grid border-b border-black/[0.04]" style={{ gridTemplateColumns: `52px repeat(${cols}, 1fr)` }}>
+          <div />
+          {days.map((d) => {
+            const isToday = d.dateKey === getTimeZoneDateKey(now, timeZone);
+            return (
+              <div key={d.key} className="border-l border-black/[0.04] px-2 py-3 text-center">
+                <div className="text-[11px] font-medium uppercase tracking-wide text-[#86868b]">{fmtDayShort(d.dateKey, timeZone)}</div>
+                <div className={`mt-0.5 inline-flex h-8 w-8 items-center justify-center rounded-full text-[16px] font-semibold ${isToday ? 'bg-[#0071e3] text-white' : 'text-[#1d1d1f]'}`}>{fmtDayNum(d.dateKey, timeZone)}</div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Grid */}
+        <div className="max-h-[calc(100vh-18rem)] overflow-y-auto">
+          <div className="relative grid" style={{ gridTemplateColumns: `52px repeat(${cols}, 1fr)` }}>
+            <div>
+              {hours.map((h) => (
+                <div key={h} className="relative border-b border-black/[0.04]" style={{ height: HOUR_PX }}>
+                  <span className="absolute -top-2.5 right-2 text-[10px] font-medium tabular-nums text-[#86868b]">
+                    {h % 12 || 12} {h < 12 ? 'AM' : 'PM'}
+                  </span>
                 </div>
-              </label>
-            ))}
+              ))}
+            </div>
+
+            {days.map((d) => {
+              const viewStart = withTimeOnDate(d.dateKey, CALENDAR_START_HOUR * 60, timeZone);
+              const viewEnd = withTimeOnDate(d.dateKey, CALENDAR_END_HOUR * 60, timeZone);
+              const dayBlocks = blocks.filter((block) => {
+                const start = new Date(block.startAt);
+                const end = new Date(block.endAt);
+                return start < viewEnd && end > viewStart;
+              });
+
+              return (
+                <div key={d.key} className="relative cursor-crosshair border-l border-black/[0.04]" onMouseDown={(event) => handleColumnMouseDown(event, d)} onMouseMove={(event) => handleColumnMouseMove(event, d)}>
+                  {hours.map((h) => <div key={h} className="border-b border-black/[0.04]" style={{ height: HOUR_PX }} />)}
+
+                  {nowPx !== null && d.dateKey === getTimeZoneDateKey(now, timeZone) && (
+                    <div className="pointer-events-none absolute inset-x-0 z-20 flex items-center" style={{ top: nowPx }}>
+                      <span className="h-2.5 w-2.5 -translate-x-[5px] rounded-full bg-red-500" />
+                      <span className="h-[1.5px] flex-1 bg-red-500" />
+                    </div>
+                  )}
+
+                  {draftBlock?.dayKey === d.key && (
+                    (() => {
+                      const startMinutes = Math.min(draftBlock.startMinutes, draftBlock.endMinutes);
+                      const endMinutes = Math.max(draftBlock.startMinutes, draftBlock.endMinutes) + CALENDAR_DRAG_STEP_MINUTES;
+                      const top = ((startMinutes / 60) - CALENDAR_START_HOUR) * HOUR_PX;
+                      const height = Math.max(((endMinutes - startMinutes) / 60) * HOUR_PX, 28);
+                      return (
+                        <div className="pointer-events-none absolute inset-x-1 z-30 overflow-hidden rounded-lg border border-dashed border-[#1d1d1f]/25 bg-white/70 px-2 py-1 shadow-sm backdrop-blur-[1px]" style={{ top, height }}>
+                          <div className="truncate text-[10px] font-semibold uppercase tracking-[0.14em] text-[#1d1d1f]">New block</div>
+                          {height > 34 && <div className="truncate text-[11px] text-[#1d1d1f]">{fmtTime(withTimeOnDate(d.dateKey, startMinutes, timeZone).toISOString(), timeZone)} - {fmtTime(withTimeOnDate(d.dateKey, endMinutes, timeZone).toISOString(), timeZone)}</div>}
+                        </div>
+                      );
+                    })()
+                  )}
+
+                  {dayBlocks.map((block) => {
+                    const blockStart = new Date(Math.max(new Date(block.startAt).getTime(), viewStart.getTime()));
+                    const blockEnd = new Date(Math.min(new Date(block.endAt).getTime(), viewEnd.getTime()));
+                    const startH = hourOffset(blockStart);
+                    const endH = hourOffset(blockEnd);
+                    const top = Math.max((startH - CALENDAR_START_HOUR) * HOUR_PX, 0);
+                    const height = Math.max((endH - startH) * HOUR_PX, 28);
+                    return (
+                      <div key={`${d.key}-${block.id}`} className={`pointer-events-none absolute inset-x-1 z-10 overflow-hidden rounded-lg border border-dashed px-2 py-1 ${calendarBlockTone(block.source)}`} style={{ top, height }}>
+                        <div className="truncate text-[10px] font-semibold uppercase tracking-[0.14em]">{calendarBlockLabel(block.source)}</div>
+                        {height > 34 && <div className="truncate text-[11px]">{block.title}</div>}
+                        {height > 50 && <div className="truncate text-[10px] opacity-70">{fmtTime(block.startAt, timeZone)} - {fmtTime(block.endAt, timeZone)}</div>}
+                      </div>
+                    );
+                  })}
+
+                  {d.jobs.map((j) => {
+                    if (!j.scheduledAt) return null;
+                    const startH = hourOffset(j.scheduledAt);
+                    const endH = j.scheduledEndAt ? hourOffset(j.scheduledEndAt) : startH + 1.5;
+                    const top = (startH - CALENDAR_START_HOUR) * HOUR_PX;
+                    const height = Math.max((endH - startH) * HOUR_PX, 28);
+                    return (
+                      <button key={j.id} data-calendar-event="job" type="button" onClick={() => onSelect(j.id)} className={`absolute inset-x-1 z-20 overflow-hidden rounded-lg border px-2 py-1 text-left transition-shadow ${calBlockColor(j.uiStatus)} ${selectedId === j.id ? 'ring-2 ring-[#0071e3] ring-offset-1' : 'hover:shadow-md'}`} style={{ top, height }}>
+                        <div className="truncate text-[11px] font-semibold leading-tight">{j.clientName}</div>
+                        {height > 36 && <div className="truncate text-[10px] opacity-75">{j.serviceType}</div>}
+                        {height > 52 && <div className="truncate text-[10px] opacity-60">{fmtTime(j.scheduledAt, timeZone)}</div>}
+                      </button>
+                    );
+                  })}
+                </div>
+              );
+            })}
           </div>
         </div>
-      )}
+
+        {board?.groups.some((g) => !g.date && g.jobs.length > 0) && (
+          <div className="border-t border-black/[0.04] px-5 py-3 text-[12px] text-[#86868b]">
+            {board.groups.find((g) => !g.date)?.jobs.length ?? 0} unscheduled appointment(s) not shown on the calendar.
+          </div>
+        )}
+      </Card>
+
+      <Card>
+        <div className="border-b border-black/[0.04] px-5 py-3">
+          <span className="text-[13px] font-medium text-[#86868b]">{blocks.length} blocked window{blocks.length === 1 ? '' : 's'}</span>
+        </div>
+        <div className="max-h-72 overflow-y-auto">
+          {blocks.length ? blocks.map((block) => (
+            <div key={block.id} className="flex items-start justify-between gap-3 border-b border-black/[0.04] px-5 py-3">
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-[14px] font-medium text-[#1d1d1f]">{block.title}</span>
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] ${calendarBlockBadge(block.source)}`}>{calendarBlockLabel(block.source)}</span>
+                </div>
+                <div className="mt-1 text-[12px] text-[#86868b]">{fmtDateTime(block.startAt, timeZone)} - {fmtDateTime(block.endAt, timeZone)}</div>
+                {block.notes && <div className="mt-1 text-[12px] leading-relaxed text-[#515154]">{block.notes}</div>}
+              </div>
+              <button type="button" onClick={() => onDeleteBlock(block.id)} disabled={deletingBlockId === block.id} className="rounded-full border border-black/[0.08] px-3 py-1.5 text-[12px] font-medium text-[#86868b] transition-colors hover:border-red-200 hover:text-red-600 disabled:opacity-50">
+                {deletingBlockId === block.id ? 'Removing...' : 'Remove'}
+              </button>
+            </div>
+          )) : <div className="px-5 py-8 text-center text-[13px] text-[#86868b]">No blocked windows yet.</div>}
+        </div>
+      </Card>
     </div>
   );
 };
 
-const TextArea: React.FC<{
-  label?: string;
-  value: string;
-  onChange: (value: string) => void;
-  rows?: number;
-  placeholder?: string;
-}> = ({ label, value, onChange, rows = 4, placeholder }) => (
-  <label className="block">
-    {label && <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">{label}</span>}
-    <textarea
-      value={value}
-      onChange={(event) => onChange(event.target.value)}
-      rows={rows}
-      placeholder={placeholder}
-      className="dashboard-input-control w-full rounded-2xl border border-neutral-200 px-4 py-3 text-sm text-brand-black outline-none transition focus:border-brand-mclaren"
-    />
-  </label>
-);
+/* ?? Leads View ?????????????????????????????????????????????????????? */
 
-const DetailCard: React.FC<{ label: string; value: React.ReactNode }> = ({ label, value }) => (
-  <div className="dashboard-detail-card rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-4">
-    <div className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500">{label}</div>
-    <div className="mt-2 text-sm font-semibold text-brand-black">{value}</div>
-  </div>
-);
+const LeadsView: React.FC<{
+  leads: Lead[]; selected: Lead | null; onSelect: (id: string) => void;
+  getServiceDisplay: (l: Lead) => string; onConvert: (l: Lead) => void;
+}> = ({ leads: items, selected, onSelect, getServiceDisplay, onConvert }) => (
+  <div className="grid gap-5 xl:grid-cols-[1fr_360px]">
+    <Card>
+      <div className="border-b border-black/[0.04] px-5 py-3"><span className="text-[13px] font-medium text-[#86868b]">{items.length} lead{items.length === 1 ? '' : 's'}</span></div>
+      <div className="max-h-[calc(100vh-17rem)] overflow-y-auto">
+        {items.length ? items.map((l) => (
+          <button key={l.id} type="button" onClick={() => onSelect(l.id)} className={`w-full border-b border-black/[0.04] px-5 py-3.5 text-left transition-colors ${selected?.id === l.id ? 'bg-[#0071e3]/[0.05]' : 'hover:bg-black/[0.02]'}`}>
+            <div className="flex items-center gap-3">
+              <span className={`h-2 w-2 flex-none rounded-full ${leadDot(l.ui_status)}`} />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-baseline justify-between gap-3">
+                  <span className="truncate text-[14px] font-medium text-[#1d1d1f]">{l.name}</span>
+                  <span className="flex-none text-[11px] font-medium text-[#86868b]">{leadStatusLabel[l.ui_status || 'new_lead']}</span>
+                </div>
+                <div className="mt-0.5 text-[12px] text-[#86868b]">{getServiceDisplay(l) || 'Service request'} &middot; {fmtRelative(l.created_at)}</div>
+              </div>
+            </div>
+          </button>
+        )) : <Empty msg="No matching leads." />}
+      </div>
+    </Card>
 
-const EmptyState: React.FC<{ message: string }> = ({ message }) => (
-  <div className="dashboard-empty-state rounded-[24px] border border-dashed border-neutral-300 bg-[linear-gradient(180deg,#fafafa_0%,#f7f7f7_100%)] px-4 py-8 text-center text-sm text-gray-500">
-    <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-white text-gray-400 shadow-sm">
-      <MessageSquareText className="h-4 w-4" />
+    <div className="lg:sticky lg:top-6 lg:self-start">
+      {selected ? (
+        <Card>
+          <div className="px-5 pt-5 pb-4">
+            <h2 className="text-xl font-semibold tracking-tight text-[#1d1d1f]">{selected.name}</h2>
+            <p className="mt-0.5 text-[13px] text-[#86868b]">{selected.phone || selected.email || 'No contact info'}</p>
+          </div>
+          <div className="border-t border-black/[0.04] px-5 py-4 space-y-3">
+            <DField label="Requested service" value={getServiceDisplay(selected) || 'Service request'} />
+            <DField label="Preferred timing" value={leadService(selected) || 'Not specified'} />
+            {leadIssue(selected) && <DField label="Issue details" value={leadIssue(selected)} />}
+            {leadNotes(selected) && <DField label="Notes" value={leadNotes(selected)} />}
+            {leadPhotos(selected) > 0 && <DField label="Photos" value={`${leadPhotos(selected)} uploaded`} />}
+            {leadPickup(selected) && <DField label="Pickup" value="Requested" />}
+            {leadRef(selected) && <DField label="Reference" value={leadRef(selected)} />}
+          </div>
+          <div className="border-t border-black/[0.04] px-5 py-4">
+            <button type="button" onClick={() => onConvert(selected)} className="w-full rounded-xl bg-[#0071e3] py-2.5 text-center text-[13px] font-medium text-white transition-colors hover:bg-[#0077ed]">Convert to Booking</button>
+          </div>
+        </Card>
+      ) : <Card className="flex h-56 items-center justify-center"><p className="text-[13px] text-[#86868b]">Select a lead to view details</p></Card>}
     </div>
-    <div className="mt-3">{message}</div>
   </div>
+);
+
+/* ?? Reports View ???????????????????????????????????????????????????? */
+
+const ReportsView: React.FC<{ reports: ReportsResponse | null; timeZone: string }> = ({ reports, timeZone }) => {
+  if (!reports) return <Card className="flex h-56 items-center justify-center"><p className="text-[13px] text-[#86868b]">Reports unavailable</p></Card>;
+  return (
+    <div className="space-y-5">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <MetricCard label="Weekly Revenue" value={currency(reports.summary.weeklyEstimatedRevenue)} sub="Last 7 days" />
+        <MetricCard label="Monthly Revenue" value={currency(reports.summary.monthlyEstimatedRevenue)} sub="Current month" />
+        <MetricCard label="Vehicles Detailed" value={String(reports.summary.vehiclesDetailedCount)} sub="Completed" />
+        <MetricCard label="Completed Jobs" value={String(reports.summary.completedJobsCount)} sub="Last 7 days" />
+      </div>
+      <Card>
+        <div className="px-5 pt-5 pb-2">
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-[#86868b]">Status Breakdown</span>
+          <p className="mt-1 text-[13px] text-[#86868b]">{fmtDate(reports.summary.dateFrom, timeZone)} &ndash; {fmtDate(reports.summary.dateTo, timeZone)}</p>
+        </div>
+        <div className="grid gap-3 px-5 pb-5 pt-3 sm:grid-cols-2 xl:grid-cols-4">
+          {Object.entries(reports.jobsByStatus).map(([s, c]) => (
+            <div key={s} className="rounded-xl bg-[#f5f5f7] px-4 py-3">
+              <span className="text-[11px] font-medium uppercase tracking-wide text-[#86868b]">{s.replace(/_/g, ' ')}</span>
+              <div className="mt-1 text-xl font-semibold text-[#1d1d1f]">{c}</div>
+            </div>
+          ))}
+        </div>
+      </Card>
+    </div>
+  );
+};
+
+/* ?? Customer 360 Overlay ???????????????????????????????????????????? */
+
+const Customer360Overlay: React.FC<{ details: CustomerWorkspaceResponse; onClose: () => void; timeZone: string }> = ({ details, onClose, timeZone }) => {
+  const { client, summary, vehicles, serviceJobs } = details;
+  const upcoming = useMemo(() => [...serviceJobs].filter((j) => j.ui_status !== 'cancelled' && j.scheduled_at).sort((a, b) => (a.scheduled_at || '').localeCompare(b.scheduled_at || '')).slice(0, 5), [serviceJobs]);
+  const history = useMemo(() => [...serviceJobs].sort((a, b) => (b.scheduled_at || '').localeCompare(a.scheduled_at || '')), [serviceJobs]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end bg-black/20 backdrop-blur-sm" onClick={onClose}>
+      <div className="h-full w-full max-w-lg overflow-y-auto bg-white shadow-[?16px_0_48px_rgba(0,0,0,0.12)]" onClick={(e) => e.stopPropagation()}>
+        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-black/[0.04] bg-white/90 px-6 py-4 backdrop-blur">
+          <h2 className="text-lg font-semibold text-[#1d1d1f]">Customer 360</h2>
+          <button type="button" onClick={onClose} className="inline-flex h-8 w-8 items-center justify-center rounded-full text-[#86868b] transition-colors hover:bg-black/5"><X className="h-4 w-4" /></button>
+        </div>
+
+        <div className="px-6 py-6 space-y-6">
+          {/* Identity */}
+          <div>
+            <h3 className="text-2xl font-semibold tracking-tight text-[#1d1d1f]">{client.name}</h3>
+            {client.company_name && <p className="mt-0.5 text-[13px] text-[#86868b]">{client.company_name}</p>}
+            <div className="mt-3 flex flex-wrap gap-2 text-[13px] text-[#86868b]">
+              {client.phone && <span className="rounded-lg bg-[#f5f5f7] px-3 py-1.5">{client.phone}</span>}
+              {client.email && <span className="rounded-lg bg-[#f5f5f7] px-3 py-1.5">{client.email}</span>}
+              {[client.city, client.province].filter(Boolean).join(', ') && <span className="rounded-lg bg-[#f5f5f7] px-3 py-1.5">{[client.city, client.province].filter(Boolean).join(', ')}</span>}
+            </div>
+          </div>
+
+          {/* Summary */}
+          <div className="grid grid-cols-2 gap-3">
+            <StatTile label="Lifetime Revenue" value={currency(summary.lifetimeEstimatedRevenue)} />
+
+            <StatTile label="Total Services" value={String(serviceJobs.length)} />
+            <StatTile label="Vehicles" value={String(vehicles.length)} />
+          </div>
+
+          {/* Vehicles */}
+          {vehicles.length > 0 && (
+            <div>
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-[#86868b]">Vehicles</span>
+              <div className="mt-2 space-y-2">
+                {vehicles.map((v) => (
+                  <div key={v.id} className="rounded-xl bg-[#f5f5f7] px-4 py-3 text-[13px] text-[#1d1d1f]">
+                    {[v.year, v.make, v.model].filter(Boolean).join(' ') || 'Unknown'}{v.color ? ` � ${v.color}` : ''}{v.plate ? ` � ${v.plate}` : ''}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Upcoming */}
+          <div>
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-[#86868b]">Upcoming Services</span>
+            <div className="mt-2 space-y-2">
+              {upcoming.length ? upcoming.map((j) => (
+                <div key={j.id} className="rounded-xl border border-black/[0.04] bg-white px-4 py-3">
+                  <div className="flex items-center justify-between"><span className="text-[13px] font-medium text-[#1d1d1f]">{j.service_type}</span><span className="text-[12px] text-[#86868b]">{fmtDate(j.scheduled_at, timeZone)}</span></div>
+                  <div className="mt-0.5 text-[12px] text-[#86868b]">{fmtTime(j.scheduled_at, timeZone)} &middot; {currency(j.estimated_amount)}</div>
+                </div>
+              )) : <p className="text-[13px] text-[#86868b]">No upcoming services.</p>}
+            </div>
+          </div>
+
+          {/* History */}
+          <div>
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-[#86868b]">Service History ({history.length})</span>
+            <div className="mt-2 space-y-2">
+              {history.slice(0, 8).map((j) => (
+                <div key={j.id} className="flex items-center justify-between rounded-xl bg-[#f5f5f7] px-4 py-3">
+                  <div>
+                    <div className="text-[13px] font-medium text-[#1d1d1f]">{j.service_type}</div>
+                    <div className="mt-0.5 text-[12px] text-[#86868b]">{fmtDate(j.scheduled_at, timeZone)}</div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className={`h-1.5 w-1.5 rounded-full ${statusDot(j.ui_status as JobUiStatus ?? 'scheduled')}`} />
+                    <span className="text-[12px] text-[#86868b]">{currency(j.estimated_amount)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Notes */}
+          {client.notes && (
+            <div>
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-[#86868b]">Internal Notes</span>
+              <p className="mt-2 whitespace-pre-line rounded-xl bg-[#f5f5f7] px-4 py-3 text-[13px] leading-relaxed text-[#1d1d1f]">{client.notes}</p>
+            </div>
+          )}
+
+          {/* Risk flags */}
+          {summary.riskFlags.length > 0 && (
+            <div>
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-[#86868b]">Risk Flags</span>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {summary.riskFlags.map((f) => <span key={f} className="rounded-lg bg-amber-50 px-3 py-1.5 text-[12px] font-medium text-amber-700">{f}</span>)}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/* ?? Copilot Panel ??????????????????????????????????????????????????? */
+
+const CopilotPanel: React.FC<{
+  messages: OpsChatMessage[]; input: string; onInputChange: (v: string) => void;
+  onSend: (text?: string) => void; sending: boolean; onClose: () => void;
+  onConfirmProposal: (messageId: string) => void;
+  onCancelProposal: (messageId: string) => void;
+  actionLoadingId: string | null;
+  timeZone: string;
+}> = ({ messages, input, onInputChange, onSend, sending, onClose, onConfirmProposal, onCancelProposal, actionLoadingId, timeZone }) => {
+  const messagesRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const node = messagesRef.current;
+    if (!node) return;
+    node.scrollTo({ top: node.scrollHeight, behavior: 'smooth' });
+  }, [messages.length]);
+
+  return (
+    <Card className="flex h-full w-full flex-col overflow-hidden">
+      <div className="flex items-center justify-between border-b border-black/[0.04] px-4 py-2.5">
+        <div className="flex items-center gap-2"><Bot className="h-4 w-4 text-[#0071e3]" /><span className="text-[14px] font-semibold text-[#1d1d1f]">Copilot</span></div>
+        <button type="button" onClick={onClose} className="inline-flex h-7 w-7 items-center justify-center rounded-full text-[#86868b] hover:bg-black/5"><X className="h-3.5 w-3.5" /></button>
+      </div>
+
+      <div className="flex flex-wrap gap-1.5 border-b border-black/[0.04] px-4 py-2">
+        {copilotPrompts.slice(0, 2).map((p) => (
+          <button key={p} type="button" onClick={() => onSend(p)} disabled={sending} className="rounded-lg bg-[#f5f5f7] px-2.5 py-1 text-[11px] font-medium text-[#1d1d1f] transition-colors hover:bg-[#e8e8ed] disabled:opacity-50">{p}</button>
+        ))}
+      </div>
+
+      <div ref={messagesRef} className="flex-1 overflow-y-auto px-4 py-2.5 space-y-2.5">
+        {messages.map((m) => (
+          <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+            {m.role === 'user' ? (
+              <div className="max-w-[90%] rounded-2xl bg-[#0071e3] px-3.5 py-2 text-[13px] leading-relaxed text-white">
+                {m.content}
+              </div>
+            ) : (
+              <div className="max-w-[92%] overflow-hidden rounded-2xl border border-black/[0.06] bg-white shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
+                <div className="border-b border-black/[0.04] bg-[#f5f5f7] px-3.5 py-2.5">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#86868b]">Copilot</div>
+                  <div className="mt-1 text-[13px] leading-relaxed text-[#1d1d1f]">{m.content}</div>
+                </div>
+
+                {m.sections && m.sections.length > 0 && (
+                  <div className="space-y-2 px-3.5 py-3">
+                    {m.sections.map((section) => (
+                      <div key={`${m.id}-${section.title}`} className="rounded-xl bg-[#f5f5f7] px-3 py-2.5">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#86868b]">{section.title}</div>
+                        <div className="mt-2 space-y-1.5">
+                          {section.items.map((item) => (
+                            <div key={`${m.id}-${section.title}-${item}`} className="flex items-start gap-2 text-[12px] leading-relaxed text-[#1d1d1f]">
+                              <span className="mt-[6px] h-1.5 w-1.5 flex-none rounded-full bg-[#0071e3]" />
+                              <span>{item}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {m.supportingFacts && m.supportingFacts.length > 0 && (
+                  <div className="border-t border-black/[0.04] px-3.5 py-3">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#86868b]">Supporting facts</div>
+                    <div className="mt-2 space-y-1.5">
+                      {m.supportingFacts.slice(0, 3).map((fact) => (
+                        <div key={`${m.id}-${fact}`} className="text-[12px] leading-relaxed text-[#515154]">
+                          {fact}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {m.warning && <div className="border-t border-black/[0.04] bg-amber-50 px-3.5 py-2 text-[11px] text-amber-700">{m.warning}</div>}
+
+                {m.actionProposal && (
+                  <div className="border-t border-black/[0.04] px-3.5 py-3">
+                    <div className="rounded-xl border border-black/[0.06] bg-[#f5f5f7] px-3 py-3">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#86868b]">Calendar block</div>
+                      <div className="mt-1 text-[13px] font-medium text-[#1d1d1f]">{m.actionProposal.title}</div>
+                      <div className="mt-1 text-[12px] leading-relaxed text-[#515154]">{fmtDateTime(m.actionProposal.startAt, timeZone)} - {fmtDateTime(m.actionProposal.endAt, timeZone)}</div>
+                      <div className="mt-1 text-[12px] text-[#86868b]">{calendarBlockLabel(m.actionProposal.source)}</div>
+                      {m.actionProposal.notes && <div className="mt-1 text-[12px] leading-relaxed text-[#515154]">{m.actionProposal.notes}</div>}
+
+                      {m.actionProposal.status === 'pending_confirmation' && (
+                        <div className="mt-3 flex gap-2">
+                          <button type="button" onClick={() => onConfirmProposal(m.id)} disabled={actionLoadingId === m.id} className="rounded-lg bg-[#1d1d1f] px-3 py-1.5 text-[11px] font-medium text-white transition-colors hover:bg-black disabled:opacity-50">
+                            {actionLoadingId === m.id ? 'Saving...' : 'Confirm'}
+                          </button>
+                          <button type="button" onClick={() => onCancelProposal(m.id)} disabled={actionLoadingId === m.id} className="rounded-lg border border-black/[0.08] px-3 py-1.5 text-[11px] font-medium text-[#86868b] transition-colors hover:text-[#1d1d1f] disabled:opacity-50">
+                            Cancel
+                          </button>
+                        </div>
+                      )}
+
+                      {m.actionProposal.status === 'confirmed' && (
+                        <div className="mt-3 text-[11px] font-medium text-emerald-700">Saved to calendar.</div>
+                      )}
+
+                      {m.actionProposal.status === 'cancelled' && (
+                        <div className="mt-3 text-[11px] font-medium text-[#86868b]">Proposal cancelled. Nothing was saved.</div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {m.followUpQuestions && m.followUpQuestions.length > 0 && (
+                  <div className="border-t border-black/[0.04] px-3.5 py-3">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#86868b]">Next questions</div>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {m.followUpQuestions.slice(0, 2).map((q) => (
+                        <button key={q} type="button" onClick={() => onSend(q)} className="rounded-md bg-[#f5f5f7] px-2.5 py-1.5 text-[11px] font-medium text-[#0071e3] transition-colors hover:bg-[#ebebef]">{q}</button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        ))}
+
+      </div>
+
+      <div className="border-t border-black/[0.04] px-4 py-2.5">
+        <div className="flex gap-2">
+          <textarea value={input} onChange={(e) => onInputChange(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSend(); } }} rows={1} placeholder="Ask about the schedule..." className="min-h-[2.5rem] max-h-40 flex-1 resize-y rounded-xl border border-black/[0.06] bg-[#f5f5f7] px-3 py-2 text-[13px] leading-relaxed text-[#1d1d1f] placeholder:text-[#86868b] outline-none focus:border-[#0071e3]/40 focus:bg-white" />
+          <button type="button" onClick={() => onSend()} disabled={sending || !input.trim()} className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[#0071e3] text-white transition-colors hover:bg-[#0077ed] disabled:opacity-40">
+            <Send className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      </div>
+    </Card>
+  );
+};
+/* ?? Notifications Panel ????????????????????????????????????????????? */
+
+const NotificationsPanel: React.FC<{
+  notifications: InAppNotification[]; unread: InAppNotification[]; onClose: () => void;
+}> = ({ notifications, unread, onClose }) => (
+  <Card className="flex max-h-[calc(100vh-11rem)] flex-col overflow-hidden">
+    <div className="flex items-center justify-between border-b border-black/[0.04] px-4 py-3">
+      <div className="flex items-center gap-2"><Bell className="h-4 w-4 text-[#1d1d1f]" /><span className="text-[14px] font-semibold text-[#1d1d1f]">Notifications</span>{unread.length > 0 && <span className="rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-semibold text-white">{unread.length}</span>}</div>
+      <button type="button" onClick={onClose} className="inline-flex h-7 w-7 items-center justify-center rounded-full text-[#86868b] hover:bg-black/5"><X className="h-3.5 w-3.5" /></button>
+    </div>
+    <div className="flex-1 overflow-y-auto">
+      {notifications.length ? notifications.map((n) => (
+        <div key={n.id} className={`border-b border-black/[0.04] px-4 py-3 ${!n.read_at ? 'bg-[#0071e3]/[0.03]' : ''}`}>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="text-[13px] font-medium text-[#1d1d1f]">{n.title}</div>
+              <p className="mt-0.5 text-[12px] leading-relaxed text-[#86868b]">{n.message}</p>
+            </div>
+            <span className="flex-none text-[11px] text-[#86868b]">{fmtRelative(n.created_at)}</span>
+          </div>
+        </div>
+      )) : <div className="px-4 py-8 text-center text-[13px] text-[#86868b]">All clear.</div>}
+    </div>
+  </Card>
+);
+
+/* ?? Booking Modal ??????????????????????????????????????????????????? */
+
+const BookingModal: React.FC<{
+  form: BookingForm; setForm: React.Dispatch<React.SetStateAction<BookingForm>>;
+  onSubmit: (e: React.FormEvent) => void; submitting: boolean; onClose: () => void;
+  convertLead: Lead | null;
+  groupedPrimary: Array<{ label: string; offerings: ServiceOffering[] }>;
+  addOns: ServiceOffering[];
+  onServiceChange: (u: Partial<Pick<BookingForm, 'serviceCatalogId' | 'serviceAddonIds' | 'customServiceType'>>) => void;
+  timeZone: string;
+}> = ({ form, setForm, onSubmit, submitting, onClose, convertLead, groupedPrimary, addOns, onServiceChange, timeZone }) => {
+  const allowAddOns = Boolean(form.serviceCatalogId) && form.serviceCatalogId !== 'custom';
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/25 px-4 backdrop-blur-sm">
+      <div className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-[0_24px_80px_rgba(0,0,0,0.18)]">
+        <div className="flex items-start justify-between border-b border-black/[0.04] px-6 py-5">
+          <div>
+            <h2 className="text-lg font-semibold text-[#1d1d1f]">{convertLead ? `Convert ${convertLead.name}` : 'New Booking'}</h2>
+            <p className="mt-0.5 text-[13px] text-[#86868b]">{convertLead ? 'Creates client record and first service.' : 'Add a client to the schedule.'} Times are saved in Toronto time ({timeZone}).</p>
+          </div>
+          <button type="button" onClick={onClose} className="inline-flex h-8 w-8 items-center justify-center rounded-full text-[#86868b] hover:bg-black/5"><X className="h-4 w-4" /></button>
+        </div>
+
+        <form onSubmit={onSubmit} className="flex flex-1 flex-col overflow-hidden">
+          <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <MField label="Client Name" required value={form.clientName} onChange={(v) => setForm((f) => ({ ...f, clientName: v }))} />
+              <MField label="Date & Time" type="datetime-local" required value={form.scheduledAt} onChange={(v) => setForm((f) => ({ ...f, scheduledAt: v }))} />
+            </div>
+
+            {/* Service select */}
+            <div>
+              <label className="mb-1.5 block text-[12px] font-medium text-[#86868b]">Service</label>
+              <select required value={form.serviceCatalogId} onChange={(e) => onServiceChange({ serviceCatalogId: e.target.value, serviceAddonIds: e.target.value === 'custom' ? [] : form.serviceAddonIds, customServiceType: e.target.value === 'custom' ? form.customServiceType : '' })} className="w-full rounded-xl border border-black/[0.08] bg-[#f5f5f7] px-4 py-2.5 text-[13px] text-[#1d1d1f] outline-none focus:border-[#0071e3]/40 focus:bg-white">
+                <option value="">Select a service</option>
+                {groupedPrimary.map((g) => <optgroup key={g.label} label={g.label}>{g.offerings.map((o) => <option key={o.id} value={o.id}>{o.title} &middot; {o.priceLabel}</option>)}</optgroup>)}
+                <option value="custom">Custom service</option>
+              </select>
+            </div>
+            {form.serviceCatalogId === 'custom' && <MField label="Custom Service" required value={form.customServiceType} onChange={(v) => onServiceChange({ customServiceType: v })} placeholder="Enter service name" />}
+
+            {/* Add-ons */}
+            {addOns.length > 0 && (
+              <div className="rounded-xl bg-[#f5f5f7] px-4 py-3">
+                <span className="text-[11px] font-medium uppercase tracking-wide text-[#86868b]">Add-ons</span>
+                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                  {addOns.map((o) => (
+                    <label key={o.id} className={`flex items-center gap-2.5 rounded-lg border px-3 py-2.5 text-[12px] transition-colors ${form.serviceAddonIds.includes(o.id) ? 'border-[#0071e3]/30 bg-[#0071e3]/[0.04]' : 'border-black/[0.06] bg-white'} ${!allowAddOns ? 'opacity-50' : 'cursor-pointer'}`}>
+                      <input type="checkbox" disabled={!allowAddOns} checked={form.serviceAddonIds.includes(o.id)} onChange={() => onServiceChange({ serviceAddonIds: form.serviceAddonIds.includes(o.id) ? form.serviceAddonIds.filter((i) => i !== o.id) : [...form.serviceAddonIds, o.id] })} className="h-3.5 w-3.5 rounded border-neutral-300 text-[#0071e3] focus:ring-[#0071e3]" />
+                      <span className="text-[#1d1d1f]">{o.title}</span>
+                      <span className="ml-auto text-[#86868b]">{o.priceLabel}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="grid gap-4 sm:grid-cols-3">
+              <MField label="Vehicle Make" value={form.vehicleMake} onChange={(v) => setForm((f) => ({ ...f, vehicleMake: v }))} />
+              <MField label="Vehicle Model" value={form.vehicleModel} onChange={(v) => setForm((f) => ({ ...f, vehicleModel: v }))} />
+              <MField label="Year" value={form.vehicleYear} onChange={(v) => setForm((f) => ({ ...f, vehicleYear: v }))} />
+            </div>
+            <MField label="Estimated Amount" value={form.estimatedAmount} onChange={(v) => setForm((f) => ({ ...f, estimatedAmount: v }))} placeholder="0" />
+            <div>
+              <label className="mb-1.5 block text-[12px] font-medium text-[#86868b]">Notes</label>
+              <textarea value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} rows={4} placeholder="Prep reminders, customer preferences..." className="w-full rounded-xl border border-black/[0.08] bg-[#f5f5f7] px-4 py-2.5 text-[13px] leading-relaxed text-[#1d1d1f] placeholder:text-[#86868b] outline-none focus:border-[#0071e3]/40 focus:bg-white" />
+            </div>
+          </div>
+
+          <div className="flex items-center justify-end gap-3 border-t border-black/[0.04] px-6 py-4">
+            <button type="button" onClick={onClose} className="rounded-full px-5 py-2.5 text-[13px] font-medium text-[#86868b] hover:text-[#1d1d1f]">Cancel</button>
+            <button type="submit" disabled={submitting} className="rounded-full bg-[#0071e3] px-6 py-2.5 text-[13px] font-medium text-white transition-colors hover:bg-[#0077ed] disabled:opacity-50">{submitting ? 'Saving...' : convertLead ? 'Convert & Save' : 'Save Booking'}</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+const CalendarBlockModal: React.FC<{
+  form: CalendarBlockForm;
+  setForm: React.Dispatch<React.SetStateAction<CalendarBlockForm>>;
+  submitting: boolean;
+  onSubmit: (e: React.FormEvent) => void;
+  onClose: () => void;
+  timeZone: string;
+}> = ({ form, setForm, submitting, onSubmit, onClose, timeZone }) => (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/25 px-4 backdrop-blur-sm">
+    <div className="flex w-full max-w-xl flex-col overflow-hidden rounded-2xl bg-white shadow-[0_24px_80px_rgba(0,0,0,0.18)]">
+      <div className="flex items-start justify-between border-b border-black/[0.04] px-6 py-5">
+        <div>
+          <h2 className="text-lg font-semibold text-[#1d1d1f]">Block time</h2>
+          <p className="mt-0.5 text-[13px] text-[#86868b]">Reserve calendar time for walk-ins, doorstep jobs, or internal holds in Toronto time ({timeZone}).</p>
+        </div>
+        <button type="button" onClick={onClose} className="inline-flex h-8 w-8 items-center justify-center rounded-full text-[#86868b] hover:bg-black/5"><X className="h-4 w-4" /></button>
+      </div>
+
+      <form onSubmit={onSubmit} className="space-y-4 px-6 py-5">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <MField label="From" type="datetime-local" required value={form.startAt} onChange={(v) => setForm((f) => ({ ...f, startAt: v }))} />
+          <MField label="To" type="datetime-local" required value={form.endAt} onChange={(v) => setForm((f) => ({ ...f, endAt: v }))} />
+        </div>
+
+        <div>
+          <label className="mb-1.5 block text-[12px] font-medium text-[#86868b]">Block type</label>
+          <select value={form.source} onChange={(e) => setForm((f) => ({ ...f, source: e.target.value as CalendarBlockSource, title: f.title || calendarBlockLabel(e.target.value as CalendarBlockSource) }))} className="w-full rounded-xl border border-black/[0.08] bg-[#f5f5f7] px-4 py-2.5 text-[13px] text-[#1d1d1f] outline-none focus:border-[#0071e3]/40 focus:bg-white">
+            {calendarBlockSourceOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        </div>
+
+        <MField label="Title" required value={form.title} onChange={(v) => setForm((f) => ({ ...f, title: v }))} placeholder="Walk-in hold" />
+
+        <div>
+          <label className="mb-1.5 block text-[12px] font-medium text-[#86868b]">Notes</label>
+          <textarea value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} rows={4} placeholder="Optional context for the team..." className="w-full rounded-xl border border-black/[0.08] bg-[#f5f5f7] px-4 py-2.5 text-[13px] leading-relaxed text-[#1d1d1f] placeholder:text-[#86868b] outline-none focus:border-[#0071e3]/40 focus:bg-white" />
+        </div>
+
+        <div className="flex items-center justify-end gap-3 border-t border-black/[0.04] pt-4">
+          <button type="button" onClick={onClose} className="rounded-full px-5 py-2.5 text-[13px] font-medium text-[#86868b] hover:text-[#1d1d1f]">Cancel</button>
+          <button type="submit" disabled={submitting} className="rounded-full bg-[#1d1d1f] px-6 py-2.5 text-[13px] font-medium text-white transition-colors hover:bg-black disabled:opacity-50">
+            {submitting ? 'Saving...' : 'Save block'}
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+);
+
+/* ?? Shared UI Atoms ????????????????????????????????????????????????? */
+
+const Card: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className = '' }) => (
+  <div className={`overflow-hidden rounded-2xl border border-black/[0.04] bg-white shadow-[0_1px_8px_rgba(0,0,0,0.06)] ${className}`}>{children}</div>
+);
+
+const DField: React.FC<{ label: string; value: string }> = ({ label, value }) => (
+  <div><span className="text-[11px] font-medium text-[#86868b]">{label}</span><p className="mt-0.5 text-[13px] font-medium text-[#1d1d1f]">{value}</p></div>
+);
+
+const MField: React.FC<{ label: string; value: string; onChange: (v: string) => void; type?: string; placeholder?: string; required?: boolean }> = ({ label, value, onChange, type = 'text', placeholder, required }) => (
+  <div>
+    <label className="mb-1.5 block text-[12px] font-medium text-[#86868b]">{label}</label>
+    <input type={type} required={required} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className="w-full rounded-xl border border-black/[0.08] bg-[#f5f5f7] px-4 py-2.5 text-[13px] text-[#1d1d1f] placeholder:text-[#86868b] outline-none transition-colors focus:border-[#0071e3]/40 focus:bg-white" />
+  </div>
+);
+
+const MetricCard: React.FC<{ label: string; value: string; sub: string }> = ({ label, value, sub }) => (
+  <Card>
+    <div className="px-5 py-4">
+      <span className="text-[11px] font-semibold uppercase tracking-wide text-[#86868b]">{label}</span>
+      <div className="mt-2 text-2xl font-semibold tracking-tight text-[#1d1d1f]">{value}</div>
+      <p className="mt-1 text-[12px] text-[#86868b]">{sub}</p>
+    </div>
+  </Card>
+);
+
+const StatTile: React.FC<{ label: string; value: string }> = ({ label, value }) => (
+  <div className="rounded-xl bg-[#f5f5f7] px-4 py-3">
+    <span className="text-[11px] font-medium uppercase tracking-wide text-[#86868b]">{label}</span>
+    <div className="mt-1 text-lg font-semibold text-[#1d1d1f]">{value}</div>
+  </div>
+);
+
+const Empty: React.FC<{ msg: string }> = ({ msg }) => (
+  <div className="flex h-48 items-center justify-center"><p className="text-[13px] text-[#86868b]">{msg}</p></div>
 );
 
 export default Dashboard;
-
-

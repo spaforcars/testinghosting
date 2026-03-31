@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { listAiRuns } from './ai';
 import { getCmsPageData } from './cms';
 import { mapJobToUiStatus, mapJobUiStatusToInternal } from './dashboardStatus';
+import { compareOperatorJobs, getJobOperatorMeta } from './operatorWorkflow';
 import { defaultServicesPageContent } from '../../lib/cmsDefaults';
 import { adaptServicesContent } from '../../lib/contentAdapter';
 import { estimateServiceAmount } from '../../lib/serviceCatalog';
@@ -68,9 +69,49 @@ export const getEnrichedJobAmount = (
   0;
 
 export type DashboardJob = Record<string, unknown> & {
+  id: string;
+  lead_id?: string | null;
+  client_id?: string | null;
+  client_name: string;
+  service_type: string;
+  status: string;
+  scheduled_at?: string | null;
+  created_at: string;
+  completed_at?: string | null;
+  notes?: string | null;
+  booking_source?: string | null;
+  pickup_requested?: boolean | null;
+  assignee_id?: string | null;
+  vehicle_make?: string | null;
+  vehicle_model?: string | null;
+  vehicle_year?: number | null;
   ui_status: ReturnType<typeof mapJobToUiStatus>;
   payment_status: 'paid' | 'unpaid';
   estimated_amount: number;
+  aging_state: 'fresh' | 'needs_follow_up' | 'urgent';
+  follow_up_reason: string;
+  is_unassigned: boolean;
+  is_overdue: boolean;
+  needs_payment_follow_up: boolean;
+};
+
+export const loadAssigneeNameLookup = async (supabase: SupabaseClient, assigneeIds: string[]) => {
+  const uniqueIds = Array.from(new Set(assigneeIds.filter(Boolean)));
+  if (!uniqueIds.length) return new Map<string, string>();
+
+  const { data, error } = await supabase
+    .from('user_profiles')
+    .select('id, full_name')
+    .in('id', uniqueIds);
+
+  if (error) throw new Error(error.message);
+
+  return new Map(
+    ((data || []) as Array<Record<string, unknown>>).map((profile) => [
+      readString(profile.id),
+      readString(profile.full_name),
+    ])
+  );
 };
 
 export const fetchDashboardJobs = async (
@@ -85,6 +126,12 @@ export const fetchDashboardJobs = async (
     bookingSource?: string | 'all' | null;
     pickupRequested?: boolean | null;
     assigneeId?: string | 'all' | null;
+    clientId?: string | null;
+    leadId?: string | null;
+    unassignedOnly?: boolean;
+    overdueOnly?: boolean;
+    needsPaymentFollowUp?: boolean;
+    sortMode?: 'scheduled' | 'operator';
   } = {}
 ) => {
   const servicesContent = await getDashboardServicesContent();
@@ -113,6 +160,8 @@ export const fetchDashboardJobs = async (
       );
     }
   }
+  if (options.clientId) query = query.eq('client_id', options.clientId);
+  if (options.leadId) query = query.eq('lead_id', options.leadId);
 
   const { data, error } = await query;
   if (error) throw new Error(error.message);
@@ -122,17 +171,28 @@ export const fetchDashboardJobs = async (
     (data || []).map((job) => readString(job.id)).filter(Boolean)
   );
 
-  const hydrated = ((data || []) as Array<Record<string, unknown>>).map((job) => ({
-    ...job,
-    estimated_amount: getEnrichedJobAmount(job, servicesContent),
-    payment_status:
-      (readString(job.payment_status) === 'paid' || readString(job.payment_status) === 'unpaid'
-        ? (readString(job.payment_status) as 'paid' | 'unpaid')
-        : paymentOverrides.get(readString(job.id)) || 'unpaid'),
-    ui_status: mapJobToUiStatus(readString(job.status) || null),
-  })) as DashboardJob[];
+  const hydrated = ((data || []) as Array<Record<string, unknown>>).map((job) => {
+    const normalizedJob = {
+      ...job,
+      estimated_amount: getEnrichedJobAmount(job, servicesContent),
+      payment_status:
+        (readString(job.payment_status) === 'paid' || readString(job.payment_status) === 'unpaid'
+          ? (readString(job.payment_status) as 'paid' | 'unpaid')
+          : paymentOverrides.get(readString(job.id)) || 'unpaid'),
+      ui_status: mapJobToUiStatus(readString(job.status) || null),
+    } as DashboardJob;
+    const operatorMeta = getJobOperatorMeta(normalizedJob);
+    return {
+      ...normalizedJob,
+      aging_state: operatorMeta.agingState,
+      follow_up_reason: operatorMeta.followUpReason,
+      is_unassigned: operatorMeta.isUnassigned,
+      is_overdue: operatorMeta.isOverdue,
+      needs_payment_follow_up: operatorMeta.needsPaymentFollowUp,
+    } as DashboardJob;
+  });
 
-  return hydrated.filter((job) => {
+  const filtered = hydrated.filter((job) => {
     if (options.paymentStatus && options.paymentStatus !== 'all' && job.payment_status !== options.paymentStatus) {
       return false;
     }
@@ -145,7 +205,45 @@ export const fetchDashboardJobs = async (
     if (options.assigneeId && options.assigneeId !== 'all' && readString(job.assignee_id) !== options.assigneeId) {
       return false;
     }
+    if (options.unassignedOnly && !job.is_unassigned) {
+      return false;
+    }
+    if (options.overdueOnly && !job.is_overdue) {
+      return false;
+    }
+    if (options.needsPaymentFollowUp && !job.needs_payment_follow_up) {
+      return false;
+    }
     return true;
+  });
+
+  return filtered.sort((left, right) => {
+    if (options.sortMode === 'operator') {
+      return compareOperatorJobs(
+        {
+          scheduled_at: left.scheduled_at as string | null | undefined,
+          agingState: left.aging_state,
+          followUpReason: left.follow_up_reason,
+          isUnassigned: left.is_unassigned,
+          isOverdue: left.is_overdue,
+          needsPaymentFollowUp: left.needs_payment_follow_up,
+        },
+        {
+          scheduled_at: right.scheduled_at as string | null | undefined,
+          agingState: right.aging_state,
+          followUpReason: right.follow_up_reason,
+          isUnassigned: right.is_unassigned,
+          isOverdue: right.is_overdue,
+          needsPaymentFollowUp: right.needs_payment_follow_up,
+        }
+      );
+    }
+    const leftScheduledAt = readString(left.scheduled_at);
+    const rightScheduledAt = readString(right.scheduled_at);
+    const leftTime = leftScheduledAt ? new Date(leftScheduledAt).getTime() : Number.MAX_SAFE_INTEGER;
+    const rightTime = rightScheduledAt ? new Date(rightScheduledAt).getTime() : Number.MAX_SAFE_INTEGER;
+    if (leftTime !== rightTime) return leftTime - rightTime;
+    return readString(right.created_at).localeCompare(readString(left.created_at));
   });
 };
 
@@ -168,6 +266,29 @@ export const fetchDashboardNotifications = async (
   const { data, error } = await query;
   if (error) {
     if (isMissingTableError(error.message, 'in_app_notifications')) {
+      return [];
+    }
+    throw new Error(error.message);
+  }
+
+  return (data || []) as Array<Record<string, unknown>>;
+};
+
+export const fetchDashboardEnquiries = async (
+  supabase: SupabaseClient,
+  options: { limit?: number; sourcePages?: string[] } = {}
+) => {
+  let query = supabase.from('enquiries').select('*').order('created_at', { ascending: false }).limit(options.limit || 25);
+
+  if (options.sourcePages?.length === 1) {
+    query = query.eq('source_page', options.sourcePages[0]);
+  } else if (options.sourcePages?.length) {
+    query = query.in('source_page', options.sourcePages);
+  }
+
+  const { data, error } = await query;
+  if (error) {
+    if (isMissingTableError(error.message, 'enquiries')) {
       return [];
     }
     throw new Error(error.message);

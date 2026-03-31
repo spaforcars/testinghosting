@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import BeforeAfterSlider from '../components/BeforeAfterSlider';
 import { useCmsPage } from '../hooks/useCmsPage';
 import { defaultGalleryPageContent } from '../lib/cmsDefaults';
@@ -8,15 +8,35 @@ const Gallery: React.FC = () => {
   const { data: cmsData } = useCmsPage('gallery', defaultGalleryPageContent);
   const content = adaptGalleryContent(cmsData);
   const transformations = content.transformations;
+  const gridRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
-      (entries) => entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); observer.unobserve(e.target); } }),
-      { threshold: 0.1 }
+      (entries) => entries.forEach(e => {
+        if (e.isIntersecting) {
+          e.target.classList.add('visible');
+          observer.unobserve(e.target);
+        }
+      }),
+      { threshold: 0.08, rootMargin: '0px 0px -40px 0px' }
     );
-    document.querySelectorAll('.sr, .stagger').forEach(el => observer.observe(el));
-    return () => observer.disconnect();
-  }, []);
+    document.querySelectorAll('.sr').forEach(el => observer.observe(el));
+
+    const cardObserver = new IntersectionObserver(
+      (entries) => entries.forEach(e => {
+        if (e.isIntersecting) {
+          e.target.classList.add('visible');
+          cardObserver.unobserve(e.target);
+        }
+      }),
+      { threshold: 0.1, rootMargin: '0px 0px -60px 0px' }
+    );
+    if (gridRef.current) {
+      gridRef.current.querySelectorAll('.gallery-card').forEach(el => cardObserver.observe(el));
+    }
+
+    return () => { observer.disconnect(); cardObserver.disconnect(); };
+  }, [transformations]);
 
   return (
     <div className="min-h-screen bg-brand-gray">
@@ -35,14 +55,20 @@ const Gallery: React.FC = () => {
       </section>
 
       <section className="px-4 py-16 md:py-20">
-        <div className="mx-auto grid max-w-7xl grid-cols-1 gap-6 md:grid-cols-2 stagger">
+        <div ref={gridRef} className="mx-auto grid max-w-7xl grid-cols-1 gap-8 md:grid-cols-2">
           {transformations.map((item, i) => (
-            <div key={`${item.label}-${i}`} className="img-zoom rounded-2xl border border-black/[0.06] overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
-              <BeforeAfterSlider
-                beforeImage={item.beforeImage}
-                afterImage={item.afterImage}
-                label={item.label}
-              />
+            <div
+              key={`${item.label}-${i}`}
+              className="gallery-card"
+              style={{ transitionDelay: `${i * 0.1}s` }}
+            >
+              <div className="gallery-card-inner rounded-2xl overflow-hidden">
+                <BeforeAfterSlider
+                  beforeImage={item.beforeImage}
+                  afterImage={item.afterImage}
+                  label={item.label}
+                />
+              </div>
             </div>
           ))}
         </div>

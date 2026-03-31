@@ -10,6 +10,8 @@ export type LeadStatus =
 export type LeadUiStatus = 'new_lead' | 'booked' | 'service_completed' | 'closed_lost';
 export type JobUiStatus = 'scheduled' | 'completed' | 'cancelled';
 export type JobPaymentStatus = 'unpaid' | 'paid';
+export type OperatorAgingState = 'fresh' | 'needs_follow_up' | 'urgent';
+export type LeadSourceGroup = 'fleet' | 'contact' | 'booking';
 
 export type NotificationStatus = 'queued' | 'sent' | 'failed';
 
@@ -51,6 +53,14 @@ export interface Lead {
   booking_mode?: 'instant' | 'request' | null;
   intake_metadata?: Record<string, unknown> | null;
   ai_metadata?: Record<string, unknown> | null;
+  assignee_label?: string | null;
+  aging_state?: OperatorAgingState | null;
+  follow_up_reason?: string | null;
+  is_unassigned?: boolean;
+  is_reviewed?: boolean;
+  reviewed_at?: string | null;
+  reviewed_by?: string | null;
+  source_group?: LeadSourceGroup | null;
   created_at: string;
   updated_at: string;
 }
@@ -123,6 +133,12 @@ export interface ServiceJob {
   pickup_address?: Record<string, unknown> | null;
   completed_at?: string | null;
   ai_metadata?: Record<string, unknown> | null;
+  assignee_label?: string | null;
+  aging_state?: OperatorAgingState | null;
+  follow_up_reason?: string | null;
+  is_unassigned?: boolean;
+  is_overdue?: boolean;
+  needs_payment_follow_up?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -166,6 +182,65 @@ export interface BillingRecord {
   notes?: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export type CustomerTimelineKind = 'job' | 'note' | 'message' | 'payment' | 'ai';
+export type CustomerTimelineCategory = 'Jobs' | 'Payments' | 'Messages' | 'AI' | 'Notes';
+
+export interface CustomerMessageLog {
+  id: string;
+  created_at: string;
+  action: string;
+  channel: 'email' | 'sms' | 'whatsapp' | 'internal';
+  subject?: string | null;
+  body: string;
+  recipient?: string | null;
+  intent?: string | null;
+  status: 'drafted' | 'copied' | 'sent' | 'logged';
+  direction: 'outbound' | 'inbound';
+  templateId?: string | null;
+}
+
+export interface CustomerTimelineItem {
+  id: string;
+  kind: CustomerTimelineKind;
+  category: CustomerTimelineCategory;
+  createdAt: string;
+  title: string;
+  subtitle: string;
+  note?: string | null;
+  entityId: string;
+  entityType: string;
+}
+
+export interface CustomerWorkspaceSummary {
+  assignedOwnerLabel: string;
+  lifetimeEstimatedRevenue: number;
+  unpaidBalance: number;
+  nextAppointment: ServiceJob | null;
+  lastCompletedService: ServiceJob | null;
+  recentContactAt?: string | null;
+  lastPaymentChangeAt?: string | null;
+  unassignedUpcomingCount: number;
+  riskFlags: string[];
+  recommendedNextAction: string;
+}
+
+export interface CustomerWorkspaceResponse {
+  client: ClientRecord & {
+    assignee_label?: string | null;
+  };
+  summary: CustomerWorkspaceSummary;
+  vehicles: CustomerVehicle[];
+  serviceJobs: ServiceJob[];
+  unpaidJobs: ServiceJob[];
+  paidJobs: ServiceJob[];
+  leads: Lead[];
+  enquiries: Enquiry[];
+  messageLogs: CustomerMessageLog[];
+  billingRecords: BillingRecord[];
+  aiRuns: Array<Record<string, unknown>>;
+  timeline: CustomerTimelineItem[];
 }
 
 export interface InAppNotification {

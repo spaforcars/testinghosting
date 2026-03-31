@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from '../_lib/supabaseAdmin';
 import { forbidden, methodNotAllowed, serverError, unauthorized } from '../_lib/http';
 import { isFeatureEnabled } from '../_lib/featureFlags';
 import { getBookingSettings } from '../_lib/booking';
+import { listCalendarTimeBlocks } from '../_lib/calendarBlocks';
 import { fetchDashboardJobs, getDayLabel, getTimeZoneDateKey } from '../_lib/dashboardData';
 
 const readString = (value: unknown) => (typeof value === 'string' ? value : '');
@@ -36,9 +37,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const assigneeId = typeof req.query.assigneeId === 'string' ? req.query.assigneeId : null;
     const pickupRequested = parseBooleanFilter(req.query.pickupRequested);
     const search = typeof req.query.search === 'string' ? req.query.search : null;
+    const unassignedOnly = parseBooleanFilter(req.query.unassignedOnly) === true;
+    const overdueOnly = parseBooleanFilter(req.query.overdueOnly) === true;
+    const needsPaymentFollowUp = parseBooleanFilter(req.query.needsPaymentFollowUp) === true;
 
     const jobs = await fetchDashboardJobs(supabase, {
-      limit: 260,
+      limit: dateFrom || dateTo ? 260 : 1000,
       scheduledFrom: dateFrom,
       scheduledTo: dateTo,
       search,
@@ -48,6 +52,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       bookingSource: bookingSource || 'all',
       pickupRequested,
       assigneeId: assigneeId || 'all',
+      unassignedOnly,
+      overdueOnly,
+      needsPaymentFollowUp,
+      sortMode: 'operator',
+    });
+    const calendarBlocks = await listCalendarTimeBlocks(supabase, {
+      startAt: dateFrom,
+      endAt: dateTo,
     });
 
     const assigneeIds = Array.from(
@@ -89,6 +101,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       };
       existing.jobs.push({
         id: readString(job.id),
+        clientId: readString(job.client_id) || null,
         clientName: readString(job.client_name),
         serviceType: readString(job.service_type),
         scheduledAt: scheduledAt || null,
@@ -104,6 +117,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         assigneeId: readString(job.assignee_id) || null,
         assigneeLabel:
           assigneeNameLookup.get(readString(job.assignee_id)) || readString(job.assignee_id) || 'Unassigned',
+        agingState: readString(job.aging_state) || 'fresh',
+        followUpReason: readString(job.follow_up_reason) || null,
+        isUnassigned: Boolean(job.is_unassigned),
+        isOverdue: Boolean(job.is_overdue),
+        needsPaymentFollowUp: Boolean(job.needs_payment_follow_up),
         aiMetadata: job.ai_metadata && typeof job.ai_metadata === 'object' ? job.ai_metadata : {},
       });
       groupsMap.set(dateKey, existing);
@@ -116,12 +134,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
 
     return res.status(200).json({
+      timeZone,
       summary: {
         totalJobs: jobs.length,
         unpaidJobs: jobs.filter((job) => job.payment_status !== 'paid').length,
         pickupJobs: jobs.filter((job) => Boolean(job.pickup_requested)).length,
         completedJobs: jobs.filter((job) => job.ui_status === 'completed').length,
       },
+      blocks: calendarBlocks,
       filters: {
         assignees: [
           { id: 'all', label: 'All assignees', count: jobs.length },
@@ -132,9 +152,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           })),
         ],
       },
-      groups,
+      groups: groups.map((group) => ({
+        ...group,
+        summary: {
+          totalJobs: group.jobs.length,
+          unpaidJobs: group.jobs.filter((job) => job.paymentStatus !== 'paid').length,
+          pickupJobs: group.jobs.filter((job) => job.pickupRequested).length,
+        },
+      })),
     });
   } catch (error) {
     return serverError(res, error);
   }
 }
+

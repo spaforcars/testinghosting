@@ -71,7 +71,12 @@ app.use('/api', async (req, res, next) => {
     });
 
     const handlerPath = match.handlerPath;
-    const handlerModule = await import(pathToFileURL(handlerPath).href);
+    const handlerUrl = pathToFileURL(handlerPath);
+    if (process.env.NODE_ENV !== 'production') {
+      const { mtimeMs } = fs.statSync(handlerPath);
+      handlerUrl.searchParams.set('t', String(mtimeMs));
+    }
+    const handlerModule = await import(handlerUrl.href);
     const handler = handlerModule.default;
 
     if (typeof handler !== 'function') {

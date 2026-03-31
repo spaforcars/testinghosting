@@ -13,6 +13,12 @@ import {
 import { serverError } from '../_lib/http';
 import { writeAuditLog } from '../_lib/audit';
 import { createUniqueInAppNotification } from '../_lib/inAppNotifications';
+import {
+  formatDateTimeInTimeZone,
+  getTimeZoneDateKey,
+  getTimeZoneParts,
+  localDateKeyToUtcRange,
+} from '../../lib/timeZone';
 
 const hasCronAccess = (req: VercelRequest): boolean => {
   const secret = process.env.CRON_SECRET;
@@ -80,10 +86,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let customerRemindersSent = 0;
 
     const next24Hours = new Date(nowDate.getTime() + 24 * 60 * 60 * 1000).toISOString();
-    const startOfToday = new Date(nowDate);
-    startOfToday.setHours(0, 0, 0, 0);
-    const endOfToday = new Date(startOfToday);
-    endOfToday.setDate(endOfToday.getDate() + 1);
+    const todayKey = getTimeZoneDateKey(nowDate, bookingSettings.timeZone);
+    const { start: startOfToday, end: endOfToday } = localDateKeyToUtcRange(todayKey, bookingSettings.timeZone);
+    const localNowParts = getTimeZoneParts(nowDate, bookingSettings.timeZone);
 
     const { data: reminderJobs, error: reminderJobsError } = await supabase
       .from('service_jobs')
@@ -103,7 +108,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           const created = await createUniqueInAppNotification(supabase, job.assignee_id, {
             category: 'appointment_reminder_24h',
             title: 'Appointment reminder: tomorrow / next 24h',
-            message: `${job.client_name} | ${job.service_type} at ${scheduledAt.toLocaleString()}`,
+            message: `${job.client_name} | ${job.service_type} at ${formatDateTimeInTimeZone(scheduledAt, {
+              weekday: 'short',
+              month: 'short',
+              day: 'numeric',
+              hour: 'numeric',
+              minute: '2-digit',
+              hour12: true,
+            }, bookingSettings.timeZone)}`,
             entityType: 'service_job',
             entityId: job.id,
             metadata: { reminderType: '24h', scheduledAt: job.scheduled_at },
@@ -156,12 +168,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
       }
 
-      if (nowDate.getHours() < 12 && scheduledAt >= startOfToday && scheduledAt < endOfToday) {
+      if ((localNowParts?.hour ?? 24) < 12 && scheduledAt >= startOfToday && scheduledAt < endOfToday) {
         if (job.assignee_id) {
           const created = await createUniqueInAppNotification(supabase, job.assignee_id, {
             category: 'appointment_reminder_same_day',
             title: 'Appointment reminder: today',
-            message: `${job.client_name} | ${job.service_type} at ${scheduledAt.toLocaleString()}`,
+            message: `${job.client_name} | ${job.service_type} at ${formatDateTimeInTimeZone(scheduledAt, {
+              weekday: 'short',
+              month: 'short',
+              day: 'numeric',
+              hour: 'numeric',
+              minute: '2-digit',
+              hour12: true,
+            }, bookingSettings.timeZone)}`,
             entityType: 'service_job',
             entityId: job.id,
             metadata: { reminderType: 'same_day', scheduledAt: job.scheduled_at },

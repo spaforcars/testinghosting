@@ -4,9 +4,13 @@ import { getSupabaseAdmin } from '../_lib/supabaseAdmin';
 import { forbidden, methodNotAllowed, serverError, unauthorized } from '../_lib/http';
 import { isFeatureEnabled } from '../_lib/featureFlags';
 import { getCmsPageData } from '../_lib/cms';
+import { getBookingSettings } from '../_lib/booking';
 import { adaptServicesContent } from '../../lib/contentAdapter';
 import { defaultServicesPageContent } from '../../lib/cmsDefaults';
 import { estimateServiceAmount } from '../../lib/serviceCatalog';
+import {
+  getStartOfMonthInTimeZone,
+} from '../../lib/timeZone';
 
 const toIsoDate = (value: string | undefined, fallback: Date) => {
   if (!value) return fallback.toISOString();
@@ -46,9 +50,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const reportsEnabled = await isFeatureEnabled(supabase, 'ops_reports_enabled', true);
     if (!reportsEnabled) return forbidden(res);
 
+    const bookingSettings = await getBookingSettings(supabase);
+    const timeZone = bookingSettings.timeZone;
     const now = new Date();
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const monthStart = getStartOfMonthInTimeZone(now, timeZone);
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     const fromIso = toIsoDate(String(req.query.dateFrom || ''), thirtyDaysAgo);
     const toIso = toIsoDate(String(req.query.dateTo || ''), now);

@@ -1,6 +1,8 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import {
+  BOOKING_CAPACITY_CONFLICT_MESSAGE,
   buildManageLink,
+  checkInstantBookingCapacity,
   createBookingReference,
   createManageToken,
   getBookingServiceSelection,
@@ -276,6 +278,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return badRequest(res, 'scheduledAt must be a valid ISO timestamp');
       }
 
+      const capacity = await checkInstantBookingCapacity(supabase, {
+        serviceId: selection.primaryService.id,
+        addOnIds,
+        scheduledAt: requestedSlot.toISOString(),
+      });
+
+      if (!capacity.isAvailable) {
+        return res.status(409).json({ error: BOOKING_CAPACITY_CONFLICT_MESSAGE });
+      }
+
       const dateKey = new Intl.DateTimeFormat('en-CA', {
         timeZone: settings.timeZone,
         year: 'numeric',
@@ -291,12 +303,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         dateKey,
       });
 
-      const matchedSlot = availability.slots.find((slot) => slot.startAt === requestedSlot.toISOString());
+      const matchedSlot = availability.slots.find(
+        (slot) => slot.startAt === requestedSlot.toISOString() && slot.status === 'available'
+      );
       if (!matchedSlot) {
-        return res.status(409).json({ error: 'That appointment slot is no longer available' });
+        return res.status(409).json({ error: BOOKING_CAPACITY_CONFLICT_MESSAGE });
       }
 
-      scheduledAt = matchedSlot.startAt;
+      scheduledAt = capacity.slot.startAt;
     }
 
     if (bookingMode === 'request' && !trim(body.issueDetails) && !trim(body.notes)) {

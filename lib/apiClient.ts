@@ -1,4 +1,5 @@
 import { getSupabaseBrowserClient } from './supabaseBrowser';
+import { clearSessionTokenCookie, setSessionTokenCookie } from './sessionTokenCookie';
 
 export class ApiError extends Error {
   status: number;
@@ -31,7 +32,11 @@ const buildHeaders = async (headers?: HeadersInit): Promise<Headers> => {
 
     const accessToken = session?.access_token;
     if (accessToken) {
+      setSessionTokenCookie(accessToken, session?.expires_at);
       merged.set('Authorization', `Bearer ${accessToken}`);
+      merged.set('X-Supabase-Access-Token', accessToken);
+    } else {
+      clearSessionTokenCookie();
     }
   }
 

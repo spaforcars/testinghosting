@@ -13,12 +13,16 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
   const navigation = adaptNavigationContent(navigationData);
   const siteSettings = adaptSiteSettingsContent(siteSettingsData);
+  const contactPhones = [siteSettings.contactPhone, siteSettings.secondaryContactPhone].filter(
+    (phone, index, phones) => Boolean(phone) && phones.indexOf(phone) === index
+  );
 
   const primaryLinks = navigation.primaryLinks.filter((link) => link.enabled);
   const secondaryLinks = navigation.secondaryLinks.filter((link) => link.enabled);
 
   const isActive = (path: string) =>
     path === '/' ? location.pathname === '/' : location.pathname.startsWith(path);
+  const formatTelHref = (phone: string) => `tel:${phone.replace(/[^\d+]/g, '')}`;
 
   useEffect(() => {
     setIsMobileMenuOpen(false);
@@ -41,13 +45,16 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
               <Mail className="h-3 w-3" />
               {siteSettings.contactEmail}
             </a>
-            <a
-              href={`tel:${siteSettings.contactPhone.replace(/[^\d+]/g, '')}`}
-              className="inline-flex items-center gap-1.5 text-[11px] uppercase tracking-[0.1em] text-neutral-400 transition-colors duration-300 hover:text-brand-mclaren"
-            >
-              <Phone className="h-3 w-3" />
-              {siteSettings.contactPhone}
-            </a>
+            {contactPhones.map((phone) => (
+              <a
+                key={phone}
+                href={formatTelHref(phone)}
+                className="inline-flex items-center gap-1.5 text-[11px] uppercase tracking-[0.1em] text-neutral-400 transition-colors duration-300 hover:text-brand-mclaren"
+              >
+                <Phone className="h-3 w-3" />
+                {phone}
+              </a>
+            ))}
           </div>
           <div className="hidden items-center gap-4 md:flex">
             <a
@@ -74,8 +81,10 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       <header className="sticky top-0 z-40 border-b border-black/[0.06] bg-white/90 backdrop-blur-xl">
         <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-4">
           <Link to="/" className="group">
-            <span className="font-display text-2xl font-bold tracking-tight text-neutral-900 transition-colors duration-300 group-hover:text-brand-mclaren">
-              {siteSettings.businessName.toUpperCase()}
+            <span className="font-display text-2xl font-bold tracking-tight uppercase">
+              <span className="text-brand-mclaren">Spa</span>{' '}
+              <span className="text-neutral-900">For</span>{' '}
+              <span className="text-brand-mclaren">Cars</span>
             </span>
           </Link>
 
@@ -164,7 +173,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             <span className="block font-display text-4xl font-bold text-white">
               {siteSettings.businessName}
             </span>
-            <p className="mt-2 font-serif text-lg italic text-neutral-400">
+            <p className="mt-2 font-sans text-base font-medium text-neutral-400">
               Premium detailing and paint protection studio
             </p>
           </div>
@@ -256,7 +265,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 Contact
               </h4>
               <div className="space-y-3 text-sm text-neutral-400">
-                <p className="leading-relaxed">{siteSettings.address}</p>
+                <p className="leading-relaxed whitespace-pre-line">{siteSettings.address}</p>
                 <p>
                   <a
                     href={`mailto:${siteSettings.contactEmail}`}
@@ -265,14 +274,16 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                     {siteSettings.contactEmail}
                   </a>
                 </p>
-                <p>
-                  <a
-                    href={`tel:${siteSettings.contactPhone.replace(/[^\d+]/g, '')}`}
-                    className="transition-colors duration-300 hover:text-white"
-                  >
-                    {siteSettings.contactPhone}
-                  </a>
-                </p>
+                {contactPhones.map((phone) => (
+                  <p key={phone}>
+                    <a
+                      href={formatTelHref(phone)}
+                      className="transition-colors duration-300 hover:text-white"
+                    >
+                      {phone}
+                    </a>
+                  </p>
+                ))}
               </div>
             </div>
           </div>
