@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { resolveApiUrl } from '../lib/apiClient';
 
 const ServiceNotice: React.FC = () => {
   const [notice, setNotice] = useState(
@@ -9,7 +10,7 @@ const ServiceNotice: React.FC = () => {
     let active = true;
     const load = async () => {
       try {
-        const response = await fetch('/api/cms/page?slug=settings');
+        const response = await fetch(resolveApiUrl('/api/cms/page?slug=settings'));
         if (!response.ok) return;
         const payload = (await response.json()) as { data?: { serviceNotice?: string } };
         const nextNotice = payload.data?.serviceNotice;

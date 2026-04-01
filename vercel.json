@@ -1,11 +1,13 @@
 {
+  "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "framework": "vite",
-  "crons": [
-    { "path": "/api/cron/retry-notifications", "schedule": "*/15 * * * *" },
-    { "path": "/api/cron/daily-ops-summary", "schedule": "5 * * * *" }
-  ],
+  "functions": {
+    "api/**/*.ts": {
+      "maxDuration": 60
+    }
+  },
   "rewrites": [
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ]

@@ -14,6 +14,76 @@ This project now includes:
 - CMS: Sanity (with adapter for future external CMS swap)
 - Email alerts: Resend
 
+## Render + Vercel Dual Hosting (Hobby Plans)
+Use this split when hosting the customer-facing website on Vercel Hobby and dashboard/heavy APIs on Render Hobby.
+
+### Route ownership matrix
+- **Keep on Vercel (light/public)**
+  - `/api/cms/page`
+  - `/api/enquiries`
+  - `/api/bookings*`
+  - `/api/auth/me`
+  - `/api/create-payment-intent`
+  - `/api/send-gift-card`
+- **Move to Render (dashboard/heavy)**
+  - `/api/dashboard/*`
+  - `/api/reports/*`
+  - `/api/ai/*`
+  - `/api/cron/*`
+  - `/api/leads/bulk-actions`
+  - `/api/service-jobs/bulk-actions`
+  - `/api/customers/*`
+
+### Frontend API routing
+Client URL routing is centralized in `lib/apiClient.ts`:
+- `VITE_DASHBOARD_API_BASE_URL` is used for heavy/dashboard route prefixes.
+- `VITE_PUBLIC_API_BASE_URL` can optionally force public `/api/*` calls to a fixed origin.
+- If unset, requests stay same-origin (default behavior).
+
+### Vercel project (frontend + light APIs)
+- Framework: Vite
+- Build command: `npm run build`
+- Output directory: `dist`
+- Keep `vercel.json` rewrites.
+- **Hobby plan note:** This repo does **not** define `crons` in `vercel.json`, so Hobby deployments succeed. Vercel Hobby cron scheduling is limited (daily cadence), so run retries/summaries on **Render** (or another external scheduler) for finer intervals.
+
+Required Vercel env variables:
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY`
+- `VITE_SANITY_PROJECT_ID`
+- `VITE_SANITY_DATASET`
+- `VITE_STRIPE_PUBLISHABLE_KEY`
+- `VITE_DASHBOARD_API_BASE_URL=https://<your-render-service>.onrender.com`
+- `VITE_PUBLIC_API_BASE_URL` (optional)
+
+### Render project (dashboard/heavy APIs)
+Create a Render Web Service from this repo:
+- Build command: `npm install && npm run build`
+- Start command: `npm run start:render`
+
+Required Render env variables:
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `SANITY_PROJECT_ID`
+- `SANITY_DATASET`
+- `SANITY_API_TOKEN`
+- `CMS_PROVIDER`
+- `EXTERNAL_CMS_BASE_URL` (if external CMS mode)
+- `EXTERNAL_CMS_TOKEN` (if external CMS mode)
+- `RESEND_API_KEY`
+- `ALERT_FROM_EMAIL`
+- `DEFAULT_ALERT_RECIPIENTS`
+- `CRON_SECRET`
+- `APP_BASE_URL=https://<your-vercel-domain>`
+- `CORS_ALLOWED_ORIGINS=https://<your-vercel-domain>,https://<preview-domain>.vercel.app`
+
+### Cron placement
+For dual hosting, prefer scheduling cron on Render for:
+- `/api/cron/retry-notifications`
+- `/api/cron/daily-ops-summary`
+
+If you keep cron on Vercel, keep `CRON_SECRET` aligned across environments and point cron only to the host that owns those endpoints.
+
 ## Key Implemented Routes
 - `POST /api/enquiries`
 - `GET/POST /api/leads`
@@ -59,6 +129,8 @@ Use `.env.example` as baseline.
 Important ones:
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_ANON_KEY`
+- `VITE_PUBLIC_API_BASE_URL` (optional fixed base URL for light/public `/api/*`)
+- `VITE_DASHBOARD_API_BASE_URL` (Render base URL for dashboard/heavy routes)
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `SANITY_PROJECT_ID`
@@ -71,12 +143,18 @@ Important ones:
 - `ALERT_FROM_EMAIL`
 - `DEFAULT_ALERT_RECIPIENTS`
 - `APP_BASE_URL`
+- `CORS_ALLOWED_ORIGINS` (comma-separated list for Render API, leave empty for open CORS)
 
 ## Cron Retry
-`vercel.json` includes:
-- `/api/cron/retry-notifications` once per day at 09:00 UTC.
+Scheduled jobs are **not** configured in `vercel.json` (so **Vercel Hobby** can deploy). Run them against your **Render** base URL (or whichever host serves `/api/cron/*`):
 
-Set `CRON_SECRET` and send `x-cron-secret` header from your scheduler if you want extra protection.
+- `GET /api/cron/retry-notifications` — e.g. every 15 minutes
+- `GET /api/cron/daily-ops-summary` — e.g. hourly
+
+In Render: **New** → **Cron Job** → HTTP GET to  
+`https://<your-render-service>.onrender.com/api/cron/retry-notifications` (and the daily-ops URL similarly).
+
+Set `CRON_SECRET` in Render and add header `x-cron-secret: <same value>` on the cron request if your handlers enforce it.
 
 ## Local Run
 ```bash
@@ -118,6 +196,7 @@ npm run tunnel:studio
 - Form submissions from Contact, Booking, Fleet, and Auto Repair now go through `/api/enquiries`.
 - Enquiry emails are non-blocking: submission succeeds even if email fails.
 - Failed notifications are retried by cron and tracked in `notification_events`.
+- In dual-host mode, dashboard/heavy API calls are routed using `VITE_DASHBOARD_API_BASE_URL` from the frontend.
 - Public-facing content is CMS-driven:
   - Header/footer navigation and booking CTA (`navigationConfig`)
   - Top bar/footer/site contact info + service notice (`siteSettings`)
@@ -135,3 +214,14 @@ To bootstrap editable Sanity documents in your dataset:
 ```bash
 npm run cms:seed
 ```
+
+## Dual-host smoke tests and rollback
+Smoke tests after deployment:
+- Open website pages on Vercel and confirm normal content load.
+- Open dashboard/admin views and confirm data loads from Render without CORS errors.
+- Verify lead/service job create and update flows.
+- Verify notification and cron endpoints execute successfully on the chosen host.
+
+Rollback approach:
+- Remove or empty `VITE_DASHBOARD_API_BASE_URL` to route all API calls back to same-origin.
+- Redeploy Vercel only (no backend code rollback required for quick recovery).

@@ -6,6 +6,7 @@ import Button from '../components/Button';
 import { useCmsPage } from '../hooks/useCmsPage';
 import { defaultGiftCardsPageContent } from '../lib/cmsDefaults';
 import { adaptGiftCardsContent } from '../lib/contentAdapter';
+import { resolveApiUrl } from '../lib/apiClient';
 
 const stripePublicKey =
   (typeof window !== 'undefined' &&
@@ -49,7 +50,7 @@ const CheckoutForm: React.FC<{
 
     if (paymentIntent?.status === 'succeeded') {
       try {
-        await fetch('/api/send-gift-card', {
+        await fetch(resolveApiUrl('/api/send-gift-card'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -134,7 +135,7 @@ const GiftCards: React.FC = () => {
     setPaymentError(null);
 
     try {
-      const res = await fetch('/api/create-payment-intent', {
+      const res = await fetch(resolveApiUrl('/api/create-payment-intent'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ amount: Math.round(effectiveAmount) }),
