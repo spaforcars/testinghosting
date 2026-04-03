@@ -4,9 +4,30 @@ import { useCmsPage } from '../hooks/useCmsPage';
 import { defaultGalleryPageContent } from '../lib/cmsDefaults';
 import { adaptGalleryContent } from '../lib/contentAdapter';
 
+const galleryOverrides = [
+  {
+    label: 'Engine Bay Detailing',
+    beforeImage: '/client-images/mercedes-engine-before.PNG',
+    afterImage: '/client-images/mercedes-engine-after.PNG',
+  },
+  {
+    label: 'Rear Seat Detailing',
+    beforeImage: '/client-images/seat-before.jpeg',
+    afterImage: '/client-images/seat-after.jpeg',
+  },
+] as const;
+
 const Gallery: React.FC = () => {
   const { data: cmsData } = useCmsPage('gallery', defaultGalleryPageContent);
-  const content = adaptGalleryContent(cmsData);
+  const adaptedContent = adaptGalleryContent(cmsData);
+  const existingLabels = new Set(adaptedContent.transformations.map((item) => item.label));
+  const content = {
+    ...adaptedContent,
+    transformations: [
+      ...adaptedContent.transformations,
+      ...galleryOverrides.filter((item) => !existingLabels.has(item.label)),
+    ],
+  };
   const transformations = content.transformations;
   const gridRef = useRef<HTMLDivElement>(null);
 

@@ -297,7 +297,7 @@ export const defaultServicesPageContent: ServicesPageContent = {
       priceLabel: '$300',
       fixedPriceAmount: 300,
       duration: '4-6 Hours',
-      image: '/client-images/IMG_2421_after.PNG',
+      image: '/client-images/IMG_2417.PNG',
       features: [
         'Professional installation',
         'Heat and UV rejection',
@@ -517,23 +517,25 @@ export const defaultAboutPageContent: AboutPageContent = {
   imageBadge: 'Est. 2018',
   evolutionTitle: 'The Evolution',
   evolutionBody:
-    'Formerly known as Quick Shine Auto, we grew into a process-driven studio focused on lasting protection, not quick cosmetics. The name Spa for Cars reflects the same careful treatment and restoration mindset we apply to every vehicle.',
+    'Spa for Cars was built around a higher standard of care. From the start, the focus has been on delivering consistent, high-quality results through proper technique and attention to detail. As the business has grown, that standard has remained the foundation of everything we do.',
   valueCards: [
     {
       icon: 'award',
       title: 'Certified Pros',
-      description: 'IDA-certified detailers with disciplined prep and finish standards.',
+      description:
+        'Experienced detailers trained in proper preparation, correction, and finishing methods to deliver clean, consistent results.',
     },
     {
       icon: 'heart',
       title: 'Passion Driven',
-      description: 'We treat daily drivers and high-performance cars with the same care.',
+      description:
+        'A true appreciation for automotive craftsmanship drives everything we do, from daily drivers to high performance vehicles.',
     },
     {
       icon: 'users',
       title: 'Client First',
       description:
-        'Transparent recommendations, realistic timelines, and clear communication from drop-off to handover.',
+        'Clear communication, honest guidance, and a focus on delivering results that meet expectations every time.',
     },
   ],
 };
@@ -572,6 +574,16 @@ export const defaultGalleryPageContent: GalleryPageContent = {
       label: 'Panel Correction',
       beforeImage: '/client-images/IMG_2418_before.PNG',
       afterImage: '/client-images/IMG_2418_after.PNG',
+    },
+    {
+      label: 'Engine Bay Detailing',
+      beforeImage: '/client-images/mercedes-engine-before.PNG',
+      afterImage: '/client-images/mercedes-engine-after.PNG',
+    },
+    {
+      label: 'Rear Seat Detailing',
+      beforeImage: '/client-images/seat-before.jpeg',
+      afterImage: '/client-images/seat-after.jpeg',
     },
   ],
 };

@@ -16,9 +16,21 @@ const formatCategoryLabel = (value: string) =>
 
 const heroSkeletonClass = 'animate-pulse rounded-full bg-neutral-100';
 
+const serviceImageOverrides: Record<string, string> = {
+  'window-tint-complete-vehicle': '/client-images/IMG_2417.PNG',
+  'window-tint-two-front': '/client-images/IMG_2465.PNG',
+};
+
 const Services: React.FC = () => {
   const { data: cmsData, loading } = useCmsPage('services', defaultServicesPageContent);
-  const content = adaptServicesContent(cmsData);
+  const adaptedContent = adaptServicesContent(cmsData);
+  const content = {
+    ...adaptedContent,
+    specialtyServices: adaptedContent.specialtyServices.map((service) => ({
+      ...service,
+      image: serviceImageOverrides[service.id] || service.image,
+    })),
+  };
   const detailingPackages = resolveDetailingPackages(content);
   const additionalServices = content.additionalServices.filter((service) => service.bookable);
 
