@@ -9,10 +9,28 @@ This project now includes:
 
 ## Architecture
 - Frontend: React + Vite
-- API: Vercel serverless routes (`/api/*`)
+- API: Express + `api/` handlers (`server.ts` locally and on Render); optional Vercel serverless only if you deploy `api/` to Vercel (not recommended on Hobby — see below)
 - Data/Auth: Supabase
 - CMS: Sanity (with adapter for future external CMS swap)
 - Email alerts: Resend
+
+## Vercel (static SPA) + Render (API) — recommended for Hobby
+
+Vercel Hobby limits how many **Serverless Functions** one deployment can include. This repository defines **many** `api/**/*.ts` handlers, so deploying `api/` to Vercel can exceed that cap.
+
+**Recommended setup:**
+
+1. **Vercel** — deploy **only the Vite build** (`dist`). The repo includes [`.vercelignore`](.vercelignore) with `api/` so those files are **not** uploaded as Vercel functions.
+2. **Render** — create a **Web Service** from the same repo. It runs [`server.ts`](server.ts), which loads routes from `api/` at runtime (same as local `npm run dev`).
+3. **Frontend env (Vercel)** — set **`VITE_PUBLIC_API_BASE_URL=https://<your-render-service>.onrender.com`** so all browser calls to `/api/*` resolve to Render (see [`lib/apiClient.ts`](lib/apiClient.ts) `resolveApiUrl`, plus CMS hooks).
+
+**Render notes:**
+
+- **Start command:** `npm run start:render` (uses `tsx`; `tsx` is listed in `dependencies` so production installs on Render include it).
+- **CORS:** set `CORS_ALLOWED_ORIGINS` to your Vercel production URL (and preview URLs if you use them), comma-separated.
+- **`APP_BASE_URL`:** set to your **Vercel** site URL for correct links in emails and alerts.
+
+**Optional:** you can still use `VITE_DASHBOARD_API_BASE_URL` for a **partial** split (some routes on Vercel, heavy routes on Render) — see the next section. If **all** API traffic goes to Render, `VITE_PUBLIC_API_BASE_URL` alone is enough once every client uses `resolveApiUrl` / `apiRequest`.
 
 ## Render + Vercel Dual Hosting (Hobby Plans)
 Use this split when hosting the customer-facing website on Vercel Hobby and dashboard/heavy APIs on Render Hobby.
@@ -44,6 +62,7 @@ Client URL routing is centralized in `lib/apiClient.ts`:
 - Framework: Vite
 - Build command: `npm run build`
 - Output directory: `dist`
+- For **SPA-only on Vercel** (API on Render), keep [`.vercelignore`](.vercelignore) so `api/` is not deployed as functions, and set `VITE_PUBLIC_API_BASE_URL` to your Render URL.
 - Keep `vercel.json` rewrites.
 - **Hobby plan note:** This repo does **not** define `crons` in `vercel.json`, so Hobby deployments succeed. Vercel Hobby cron scheduling is limited (daily cadence), so run retries/summaries on **Render** (or another external scheduler) for finer intervals.
 

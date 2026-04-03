@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { resolveApiUrl } from '../lib/apiClient';
 import type { PromoPlacement } from '../types/cms';
 
 export const useCmsPromos = (slot: string) => {
@@ -8,7 +9,9 @@ export const useCmsPromos = (slot: string) => {
     let active = true;
     const loadPromos = async () => {
       try {
-        const response = await fetch(`/api/cms/page?slug=${encodeURIComponent(slot)}`);
+        const response = await fetch(
+          resolveApiUrl(`/api/cms/page?slug=${encodeURIComponent(slot)}`)
+        );
         if (!response.ok) return;
         const payload = (await response.json()) as { promos?: PromoPlacement[] };
         if (active) {

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { resolveApiUrl } from '../lib/apiClient';
 
 interface CmsState<T> {
   data: T;
@@ -18,7 +19,9 @@ export const useCmsPage = <T,>(slug: string, fallback: T): CmsState<T> => {
 
     const load = async () => {
       try {
-        const response = await fetch(`/api/cms/page?slug=${encodeURIComponent(slug)}`);
+        const response = await fetch(
+          resolveApiUrl(`/api/cms/page?slug=${encodeURIComponent(slug)}`)
+        );
         if (!response.ok) {
           throw new Error(`Failed to load CMS page (${response.status})`);
         }

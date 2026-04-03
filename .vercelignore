@@ -1,0 +1,3 @@
+# API runs on Render (Express + server.ts). Excluding api/ avoids Hobby's
+# serverless function count limit when deploying the Vite SPA only.
+api/
