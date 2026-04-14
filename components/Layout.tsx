@@ -313,7 +313,15 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         <div className="border-t border-white/[0.06]">
           <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-2 px-4 py-5 text-xs text-neutral-500 md:flex-row">
             <span>&copy; {new Date().getFullYear()} {siteSettings.businessName} Inc. All rights reserved.</span>
-            <span className="text-neutral-600">{siteSettings.footerTagline}</span>
+            <div className="flex flex-wrap items-center justify-center gap-4">
+              <Link to="/terms-and-conditions" className="text-neutral-500 transition-colors duration-300 hover:text-white">
+                Terms &amp; Conditions
+              </Link>
+              <Link to="/privacy-policy" className="text-neutral-500 transition-colors duration-300 hover:text-white">
+                Privacy Policy
+              </Link>
+              <span className="text-neutral-600">{siteSettings.footerTagline}</span>
+            </div>
           </div>
         </div>
       </footer>

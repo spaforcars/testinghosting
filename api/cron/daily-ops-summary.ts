@@ -15,6 +15,7 @@ import {
 import { getSupabaseAdmin } from '../_lib/supabaseAdmin';
 import { serverError } from '../_lib/http';
 import { writeAuditLog } from '../_lib/audit';
+import { getAppBaseUrl } from '../_lib/appBaseUrl';
 
 const hasCronAccess = (req: VercelRequest): boolean => {
   const secret = process.env.CRON_SECRET;
@@ -99,7 +100,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       timeZone: bookingSettings.timeZone,
       scheduledJobs: summaryData.scheduledJobs,
       requestLeads: summaryData.requestLeads,
-      dashboardLink: `${process.env.APP_BASE_URL || 'http://localhost:3001'}/#/dashboard`,
+      dashboardLink: `${getAppBaseUrl(req)}/#/dashboard`,
     });
 
     if (sendResult.success) {

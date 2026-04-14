@@ -24,6 +24,7 @@ import { getSupabaseAdmin } from './_lib/supabaseAdmin';
 import { badRequest, methodNotAllowed, serverError } from './_lib/http';
 import { writeAuditLog } from './_lib/audit';
 import { normalizeServiceAddonIds, normalizeServiceCatalogId } from './_lib/serviceSelection';
+import { getAppBaseUrl } from './_lib/appBaseUrl';
 
 type BookingAssetInput = {
   path: string;
@@ -323,11 +324,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const manageTokenExpiresAt = new Date(
       Date.now() + settings.manageTokenValidityHours * 60 * 60 * 1000
     ).toISOString();
-    const manageLink = buildManageLink(
-      process.env.APP_BASE_URL || 'http://localhost:3001',
-      bookingReference,
-      manageToken
-    );
+    const manageLink = buildManageLink(getAppBaseUrl(req), bookingReference, manageToken);
 
     const serviceType = buildServiceType(
       selection.primaryService.title,

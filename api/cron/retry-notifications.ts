@@ -13,6 +13,7 @@ import {
 import { serverError } from '../_lib/http';
 import { writeAuditLog } from '../_lib/audit';
 import { createUniqueInAppNotification } from '../_lib/inAppNotifications';
+import { getAppBaseUrl } from '../_lib/appBaseUrl';
 import {
   formatDateTimeInTimeZone,
   getTimeZoneDateKey,
@@ -337,7 +338,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           timeZone: bookingSettings.timeZone,
           scheduledJobs: summaryData.scheduledJobs,
           requestLeads: summaryData.requestLeads,
-          dashboardLink: `${process.env.APP_BASE_URL || 'http://localhost:3001'}/#/dashboard`,
+          dashboardLink: `${getAppBaseUrl(req)}/#/dashboard`,
         });
 
         await updateNotificationEvent(supabase, event.id, {

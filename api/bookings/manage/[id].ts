@@ -11,6 +11,7 @@ import { badRequest, methodNotAllowed, readQueryParam, readRouteId, serverError 
 import { sendBookingCancellationEmail, sendBookingRescheduledEmail } from '../../_lib/notifications';
 import { getBookingByReference } from '../../_lib/publicBookings';
 import { getSupabaseAdmin } from '../../_lib/supabaseAdmin';
+import { getAppBaseUrl } from '../../_lib/appBaseUrl';
 
 const trim = (value?: string | null) => (typeof value === 'string' ? value.trim() : '');
 
@@ -93,7 +94,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           path: asset.storage_path,
           filename: asset.original_filename,
         })),
-        manageUrl: `${process.env.APP_BASE_URL || 'http://localhost:3001'}/#/booking/manage/${encodeURIComponent(reference)}?token=${encodeURIComponent(token)}`,
+        manageUrl: `${getAppBaseUrl(req)}/#/booking/manage/${encodeURIComponent(reference)}?token=${encodeURIComponent(token)}`,
       });
     }
 
@@ -216,14 +217,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         serviceName: booking.enquiry.service_type,
         scheduledAt: capacity.slot.startAt,
         timeZone: settings.timeZone,
-        manageLink: `${process.env.APP_BASE_URL || 'http://localhost:3001'}/#/booking/manage/${encodeURIComponent(reference)}?token=${encodeURIComponent(token)}`,
+        manageLink: `${getAppBaseUrl(req)}/#/booking/manage/${encodeURIComponent(reference)}?token=${encodeURIComponent(token)}`,
         pickupRequested: Boolean(booking.serviceJob.pickup_requested),
       });
 
       return res.status(200).json({
         status: 'confirmed',
         scheduledAt: capacity.slot.startAt,
-        manageUrl: `${process.env.APP_BASE_URL || 'http://localhost:3001'}/#/booking/manage/${encodeURIComponent(reference)}?token=${encodeURIComponent(token)}`,
+        manageUrl: `${getAppBaseUrl(req)}/#/booking/manage/${encodeURIComponent(reference)}?token=${encodeURIComponent(token)}`,
       });
     }
 

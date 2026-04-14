@@ -15,6 +15,8 @@ import Contact from './pages/Contact';
 import AutoRepair from './pages/AutoRepair';
 import Dashboard from './pages/Dashboard';
 import AdminDashboard from './pages/AdminDashboard';
+import TermsAndConditions from './pages/TermsAndConditions';
+import PrivacyPolicy from './pages/PrivacyPolicy';
 
 const App: React.FC = () => {
   return (
@@ -33,6 +35,8 @@ const App: React.FC = () => {
           <Route path="/contact" element={<Contact />} />
           <Route path="/faq" element={<FAQ />} />
           <Route path="/auto-repair" element={<AutoRepair />} />
+          <Route path="/terms-and-conditions" element={<TermsAndConditions />} />
+          <Route path="/privacy-policy" element={<PrivacyPolicy />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/admin" element={<AdminDashboard />} />
         </Routes>

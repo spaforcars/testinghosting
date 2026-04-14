@@ -657,6 +657,8 @@ export const defaultNavigationContent: NavigationContent = {
   secondaryLinks: [
     { label: 'FAQ', path: '/faq', enabled: true },
     { label: 'Gift Cards', path: '/gift-cards', enabled: true },
+    { label: 'Terms', path: '/terms-and-conditions', enabled: true },
+    { label: 'Privacy', path: '/privacy-policy', enabled: true },
     { label: 'Dashboard', path: '/dashboard', enabled: true },
     { label: 'Admin', path: '/admin', enabled: true },
   ],
